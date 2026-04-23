@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="Form29Report"
+              pageWidth="2500"
+              pageHeight="1400"
+              orientation="Landscape"
+              columnWidth="2460"
+              leftMargin="20"
+              rightMargin="20"
+              topMargin="20"
+              bottomMargin="20"
+              whenNoDataType="AllSectionsNoDetail"
+              isIgnorePagination="true"
+              uuid="bf7a5ed0-54e8-4ec1-9282-0ba79f2d20c4">
+
+    <style name="Base" isDefault="true" fontName="DejaVu Sans" fontSize="10" pdfEncoding="Identity-H" isPdfEmbedded="true"/>
+    <style name="Header" style="Base" mode="Opaque" backcolor="#E6E6E6">
+        <box>
+            <topPen lineWidth="0.75"/>
+            <leftPen lineWidth="0.75"/>
+            <bottomPen lineWidth="0.75"/>
+            <rightPen lineWidth="0.75"/>
+        </box>
+    </style>
+    <style name="Cell" style="Base">
+        <box>
+            <topPen lineWidth="0.5"/>
+            <leftPen lineWidth="0.5"/>
+            <bottomPen lineWidth="0.5"/>
+            <rightPen lineWidth="0.5"/>
+        </box>
+    </style>
+    <style name="Title" style="Base" fontSize="13" isBold="true"/>
+
+    <subDataset name="Form29BodyDataset" uuid="5bd25d31-f4ea-4a1a-9de9-1e84b57db373">
+        <field name="row_bucket" class="java.lang.String"/>
+        <field name="row_label" class="java.lang.String"/>
+        <field name="row_type" class="java.lang.String"/>
+        <field name="material_bucket" class="java.lang.String"/>
+        <field name="material_label" class="java.lang.String"/>
+        <field name="metric_bucket" class="java.lang.String"/>
+        <field name="metric_label" class="java.lang.String"/>
+        <field name="display_value" class="java.lang.String"/>
+    </subDataset>
+
+    <subDataset name="Form29TotalsDataset" uuid="f085dfaa-ec6b-4151-9f03-c538f9f8dc3a">
+        <field name="total_bucket" class="java.lang.String"/>
+        <field name="total_label" class="java.lang.String"/>
+        <field name="material_bucket" class="java.lang.String"/>
+        <field name="material_label" class="java.lang.String"/>
+        <field name="metric_bucket" class="java.lang.String"/>
+        <field name="metric_label" class="java.lang.String"/>
+        <field name="display_value" class="java.lang.String"/>
+    </subDataset>
+
+    <parameter name="customerName" class="java.lang.String"/>
+    <parameter name="projectName" class="java.lang.String"/>
+    <parameter name="blockName" class="java.lang.String"/>
+    <parameter name="periodLabel" class="java.lang.String"/>
+    <parameter name="bodyDataSource" class="net.sf.jasperreports.engine.JRDataSource"/>
+    <parameter name="totalsDataSource" class="net.sf.jasperreports.engine.JRDataSource"/>
+
+    <title>
+        <band height="84">
+            <textField>
+                <reportElement x="0" y="0" width="2460" height="18"/>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA["Заказчик: " + $P{customerName}]]></textFieldExpression>
+            </textField>
+            <textField>
+                <reportElement x="0" y="20" width="2460" height="18"/>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA["Объект: " + $P{projectName} + ", блок " + $P{blockName}]]></textFieldExpression>
+            </textField>
+            <staticText>
+                <reportElement style="Title" x="0" y="42" width="2460" height="18"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <text><![CDATA[ОТЧЕТ Ф-29]]></text>
+            </staticText>
+            <textField>
+                <reportElement style="Title" x="0" y="62" width="2460" height="18"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA["За " + $P{periodLabel}]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+
+    <summary>
+        <band height="980" splitType="Stretch">
+            <crosstab ignoreWidth="true">
+                <reportElement x="0" y="0" width="2460" height="420"/>
+                <crosstabDataset>
+                    <dataset>
+                        <datasetRun subDataset="Form29BodyDataset">
+                            <dataSourceExpression><![CDATA[$P{bodyDataSource}]]></dataSourceExpression>
+                        </datasetRun>
+                    </dataset>
+                </crosstabDataset>
+
+                <crosstabHeaderCell>
+                    <cellContents mode="Opaque" style="Header">
+                        <staticText>
+                            <reportElement x="0" y="0" width="320" height="58"/>
+                            <textElement textAlignment="Center" verticalAlignment="Middle">
+                                <font isBold="true"/>
+                            </textElement>
+                            <text><![CDATA[Наименование работ]]></text>
+                        </staticText>
+                    </cellContents>
+                </crosstabHeaderCell>
+
+                <rowGroup name="BodyRow" width="320" totalPosition="None">
+                    <bucket class="java.lang.String">
+                        <bucketExpression><![CDATA[$F{row_bucket}]]></bucketExpression>
+                    </bucket>
+                    <crosstabRowHeader>
+                        <cellContents mode="Opaque" style="Cell">
+                            <textField isStretchWithOverflow="true">
+                                <reportElement x="0" y="0" width="320" height="22"/>
+                                <textElement verticalAlignment="Middle"/>
+                                <textFieldExpression><![CDATA[((String)$V{BodyRow}).substring(((String)$V{BodyRow}).lastIndexOf("|") + 1)]]></textFieldExpression>
+                            </textField>
+                        </cellContents>
+                    </crosstabRowHeader>
+                    <crosstabTotalRowHeader>
+                        <cellContents/>
+                    </crosstabTotalRowHeader>
+                </rowGroup>
+
+                <columnGroup name="BodyMaterial" height="36" totalPosition="None">
+                    <bucket class="java.lang.String">
+                        <bucketExpression><![CDATA[$F{material_bucket}]]></bucketExpression>
+                    </bucket>
+                    <crosstabColumnHeader>
+                        <cellContents mode="Opaque" style="Header">
+                            <textField isStretchWithOverflow="true">
+                                <reportElement x="0" y="0" width="55" height="36"/>
+                                <textElement textAlignment="Center" verticalAlignment="Middle">
+                                    <font isBold="true"/>
+                                </textElement>
+                                <textFieldExpression><![CDATA[((String)$V{BodyMaterial}).substring(((String)$V{BodyMaterial}).indexOf("|") + 1)]]></textFieldExpression>
+                            </textField>
+                        </cellContents>
+                    </crosstabColumnHeader>
+                    <crosstabTotalColumnHeader>
+                        <cellContents/>
+                    </crosstabTotalColumnHeader>
+                </columnGroup>
+
+                <columnGroup name="BodyMetric" height="22" totalPosition="None">
+                    <bucket class="java.lang.String">
+                        <bucketExpression><![CDATA[$F{metric_bucket}]]></bucketExpression>
+                    </bucket>
+                    <crosstabColumnHeader>
+                        <cellContents mode="Opaque" style="Header">
+                            <textField>
+                                <reportElement x="0" y="0" width="55" height="22"/>
+                                <textElement textAlignment="Center" verticalAlignment="Middle">
+                                    <font isBold="true"/>
+                                </textElement>
+                                <textFieldExpression><![CDATA[((String)$V{BodyMetric}).substring(((String)$V{BodyMetric}).lastIndexOf("|") + 1)]]></textFieldExpression>
+                            </textField>
+                        </cellContents>
+                    </crosstabColumnHeader>
+                    <crosstabTotalColumnHeader>
+                        <cellContents/>
+                    </crosstabTotalColumnHeader>
+                </columnGroup>
+
+                <measure name="BodyValue" class="java.lang.String" calculation="Nothing">
+                    <measureExpression><![CDATA[$F{display_value}]]></measureExpression>
+                </measure>
+
+                <crosstabCell width="55" height="22">
+                    <cellContents mode="Opaque" style="Cell">
+                        <textField isBlankWhenNull="true">
+                            <reportElement x="0" y="0" width="55" height="22"/>
+                            <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                            <textFieldExpression><![CDATA[$V{BodyValue}]]></textFieldExpression>
+                        </textField>
+                    </cellContents>
+                </crosstabCell>
+            </crosstab>
+
+            <crosstab ignoreWidth="true">
+                <reportElement x="0" y="450" width="2460" height="190"/>
+                <crosstabDataset>
+                    <dataset>
+                        <datasetRun subDataset="Form29TotalsDataset">
+                            <dataSourceExpression><![CDATA[$P{totalsDataSource}]]></dataSourceExpression>
+                        </datasetRun>
+                    </dataset>
+                </crosstabDataset>
+
+                <crosstabHeaderCell>
+                    <cellContents mode="Opaque" style="Header">
+                        <staticText>
+                            <reportElement x="0" y="0" width="320" height="22"/>
+                            <textElement textAlignment="Center" verticalAlignment="Middle">
+                                <font isBold="true"/>
+                            </textElement>
+                            <text><![CDATA[Итоги]]></text>
+                        </staticText>
+                    </cellContents>
+                </crosstabHeaderCell>
+
+                <rowGroup name="TotalRow" width="320" totalPosition="None">
+                    <bucket class="java.lang.String">
+                        <bucketExpression><![CDATA[$F{total_bucket}]]></bucketExpression>
+                    </bucket>
+                    <crosstabRowHeader>
+                        <cellContents mode="Opaque" style="Cell">
+                            <textField isStretchWithOverflow="true">
+                                <reportElement x="0" y="0" width="320" height="22"/>
+                                <textElement verticalAlignment="Middle">
+                                    <font isBold="true"/>
+                                </textElement>
+                                <textFieldExpression><![CDATA[((String)$V{TotalRow}).substring(((String)$V{TotalRow}).indexOf("|") + 1)]]></textFieldExpression>
+                            </textField>
+                        </cellContents>
+                    </crosstabRowHeader>
+                    <crosstabTotalRowHeader>
+                        <cellContents/>
+                    </crosstabTotalRowHeader>
+                </rowGroup>
+
+                <columnGroup name="TotalMaterial" height="11" totalPosition="None">
+                    <bucket class="java.lang.String">
+                        <bucketExpression><![CDATA[$F{material_bucket}]]></bucketExpression>
+                    </bucket>
+                    <crosstabColumnHeader>
+                        <cellContents/>
+                    </crosstabColumnHeader>
+                    <crosstabTotalColumnHeader>
+                        <cellContents/>
+                    </crosstabTotalColumnHeader>
+                </columnGroup>
+
+                <columnGroup name="TotalMetric" height="11" totalPosition="None">
+                    <bucket class="java.lang.String">
+                        <bucketExpression><![CDATA[$F{metric_bucket}]]></bucketExpression>
+                    </bucket>
+                    <crosstabColumnHeader>
+                        <cellContents/>
+                    </crosstabColumnHeader>
+                    <crosstabTotalColumnHeader>
+                        <cellContents/>
+                    </crosstabTotalColumnHeader>
+                </columnGroup>
+
+                <measure name="TotalValue" class="java.lang.String" calculation="Nothing">
+                    <measureExpression><![CDATA[$F{display_value}]]></measureExpression>
+                </measure>
+
+                <crosstabCell width="55" height="22">
+                    <cellContents mode="Opaque" style="Cell">
+                        <textField isBlankWhenNull="true">
+                            <reportElement x="0" y="0" width="55" height="22"/>
+                            <textElement textAlignment="Center" verticalAlignment="Middle">
+                                <font isBold="true"/>
+                            </textElement>
+                            <textFieldExpression><![CDATA[$V{TotalValue}]]></textFieldExpression>
+                        </textField>
+                    </cellContents>
+                </crosstabCell>
+            </crosstab>
+
+            <staticText>
+                <reportElement x="0" y="680" width="2460" height="18"/>
+                <text><![CDATA[Нач.ПТО:]]></text>
+            </staticText>
+            <staticText>
+                <reportElement x="0" y="704" width="2460" height="18"/>
+                <text><![CDATA[Тех.директор:]]></text>
+            </staticText>
+            <staticText>
+                <reportElement x="0" y="728" width="2460" height="18"/>
+                <text><![CDATA[Прораб:]]></text>
+            </staticText>
+        </band>
+    </summary>
+</jasperReport>

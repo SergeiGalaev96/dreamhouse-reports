@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="WorkPerformedReport"
+              pageWidth="595" pageHeight="842"
+              columnWidth="555"
+              leftMargin="20" rightMargin="20"
+              topMargin="20" bottomMargin="20"
+              uuid="7e5c4310-8b7e-4f3f-a6a3-7e9dd1c7f101">
+
+    <style name="Base" isDefault="true" fontName="DejaVu Sans" fontSize="10" pdfEncoding="Identity-H" isPdfEmbedded="true"/>
+
+    <parameter name="total" class="java.lang.Double"/>
+    <parameter name="advancePayment" class="java.lang.Double"/>
+    <parameter name="remainingAmount" class="java.lang.Double"/>
+    <parameter name="totalInWords" class="java.lang.String"/>
+    <parameter name="reportId" class="java.lang.String"/>
+    <parameter name="createdAt" class="java.lang.String"/>
+    <parameter name="projectName" class="java.lang.String"/>
+    <parameter name="performerName" class="java.lang.String"/>
+    <parameter name="foremanName" class="java.lang.String"/>
+    <parameter name="planningEngineerName" class="java.lang.String"/>
+    <parameter name="mainEngineerName" class="java.lang.String"/>
+    <parameter name="performerSignatureName" class="java.lang.String"/>
+    <parameter name="foremanSignatureName" class="java.lang.String"/>
+    <parameter name="planningEngineerSignatureName" class="java.lang.String"/>
+    <parameter name="mainEngineerSignatureName" class="java.lang.String"/>
+
+    <field name="service_name" class="java.lang.String"/>
+    <field name="unit_name" class="java.lang.String"/>
+    <field name="quantity" class="java.lang.Double"/>
+    <field name="price" class="java.lang.Double"/>
+    <field name="total" class="java.lang.Double"/>
+
+    <variable name="rowNumber" class="java.lang.Integer" calculation="Count">
+        <variableExpression><![CDATA[1]]></variableExpression>
+    </variable>
+
+    <title>
+        <band height="205">
+            <staticText>
+                <reportElement x="0" y="0" width="555" height="18"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Утверждаю в сумме ________________ (сом)]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="0" y="20" width="555" height="18"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Генеральный директор]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="0" y="40" width="555" height="18"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[ОсОО "СК Дрим Хаус"]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="0" y="60" width="555" height="18"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Шабданов И.Т.]]></text>
+            </staticText>
+
+            <textField>
+                <reportElement x="0" y="98" width="555" height="20"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA["АКТ выполненных работ №" + $P{reportId}]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="0" y="120" width="555" height="18"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Объект \"" + $P{projectName} + "\""]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="360" y="140" width="195" height="18"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{createdAt}]]></textFieldExpression>
+            </textField>
+
+            <textField textAdjust="StretchHeight">
+                <reportElement x="0" y="166" width="555" height="38"/>
+                <textElement textAlignment="Left" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[
+                    "Исполнитель, в лице \"" + $P{performerName} + "\""
+                    + " с одной стороны и ОсОО  \"СК Дрим Хаус\", именуемого в дальнейшем \"Заказчик\", с другой стороны, настоящим подтверждает, что \"Исполнитель\" оказал, а \"Заказчик\" принял следующие виды работ (услуг):"
+                ]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="24">
+            <staticText>
+                <reportElement x="0" y="0" width="35" height="24"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="1.5"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[№ П/П]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="35" y="0" width="300" height="24"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Наименование]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="335" y="0" width="45" height="24"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Еи]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="380" y="0" width="45" height="24"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Кол-во]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="425" y="0" width="50" height="24"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Цена]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="475" y="0" width="80" height="24"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Сумма]]></text>
+            </staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="45">
+            <textField>
+                <reportElement x="0" y="0" width="35" height="45"/>
+                <box><leftPen lineWidth="1.5"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$V{rowNumber}]]></textFieldExpression>
+            </textField>
+
+            <textField textAdjust="StretchHeight">
+                <reportElement x="35" y="0" width="300" height="45"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Left" verticalAlignment="Middle">
+                    <paragraph leftIndent="4"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{service_name}]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="335" y="0" width="45" height="45"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{unit_name}]]></textFieldExpression>
+            </textField>
+
+            <textField pattern="#,##0.##">
+                <reportElement x="380" y="0" width="45" height="45"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{quantity}]]></textFieldExpression>
+            </textField>
+
+            <textField pattern="#,##0.##">
+                <reportElement x="425" y="0" width="50" height="45"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{price}]]></textFieldExpression>
+            </textField>
+
+            <textField pattern="#,##0.##">
+                <reportElement x="475" y="0" width="80" height="45"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{total}]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+
+    <summary>
+        <band height="232">
+            <staticText>
+                <reportElement x="0" y="0" width="475" height="22"/>
+                <box><leftPen lineWidth="1.5"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Итого]]></text>
+            </staticText>
+
+            <textField pattern="#,##0.##">
+                <reportElement x="475" y="0" width="80" height="22"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{total}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="0" y="22" width="475" height="22"/>
+                <box><leftPen lineWidth="1.5"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="0.75"/></box>
+                <textElement verticalAlignment="Middle">
+                    <font isBold="true"/>
+                    <paragraph leftIndent="4"/>
+                </textElement>
+                <text><![CDATA[Аванс]]></text>
+            </staticText>
+
+            <textField pattern="#,##0.##">
+                <reportElement x="475" y="22" width="80" height="22"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="0.75"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{advancePayment}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="0" y="44" width="475" height="22"/>
+                <box><leftPen lineWidth="1.5"/><bottomPen lineWidth="1.5"/><rightPen lineWidth="0.75"/></box>
+                <textElement verticalAlignment="Middle">
+                    <font isBold="true"/>
+                    <paragraph leftIndent="4"/>
+                </textElement>
+                <text><![CDATA[Остаток]]></text>
+            </staticText>
+
+            <textField pattern="#,##0.##">
+                <reportElement x="475" y="44" width="80" height="22"/>
+                <box><leftPen lineWidth="0.75"/><bottomPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{remainingAmount}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="0" y="72" width="555" height="18"/>
+                <text><![CDATA[3. Стоимость услуг по данному акту составила:]]></text>
+            </staticText>
+
+            <textField textAdjust="StretchHeight">
+                <reportElement x="0" y="92" width="555" height="28"/>
+                <textElement verticalAlignment="Top">
+                    <font size="9" isBold="true" isItalic="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{totalInWords}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="0" y="122" width="340" height="20"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <text><![CDATA[От Заказчика:]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="340" y="122" width="215" height="20"/>
+                <box><topPen lineWidth="1.5"/><leftPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <text><![CDATA[От Исполнителя]]></text>
+            </staticText>
+
+            <textField>
+                <reportElement x="0" y="142" width="340" height="20"/>
+                <box><leftPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Left" verticalAlignment="Middle">
+                    <paragraph leftIndent="4"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Прораб:__________________" + $P{foremanSignatureName}]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="340" y="142" width="215" height="20"/>
+                <box><leftPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{performerSignatureName} + "______________"]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="0" y="162" width="340" height="20"/>
+                <box><leftPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Left" verticalAlignment="Middle">
+                    <paragraph leftIndent="4"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Инженер ПТО :  _________________" + $P{planningEngineerSignatureName}]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="0" y="182" width="340" height="20"/>
+                <box><leftPen lineWidth="1.5"/><bottomPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <textElement textAlignment="Left" verticalAlignment="Middle">
+                    <paragraph leftIndent="4"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Главный инженер: _______________ " + $P{mainEngineerSignatureName}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="340" y="162" width="215" height="40"/>
+                <box><leftPen lineWidth="1.5"/><bottomPen lineWidth="1.5"/><rightPen lineWidth="1.5"/></box>
+                <text><![CDATA[]]></text>
+            </staticText>
+        </band>
+    </summary>
+</jasperReport>

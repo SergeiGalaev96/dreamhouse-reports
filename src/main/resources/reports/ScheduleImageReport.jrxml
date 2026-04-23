@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="ScheduleImageReport"
+              pageWidth="2200"
+              pageHeight="2400"
+              columnWidth="2120"
+              leftMargin="40"
+              rightMargin="40"
+              topMargin="20"
+              bottomMargin="20"
+              uuid="3e70bcf8-0134-4f8b-9fc8-9d8dc504f8f4">
+
+    <parameter name="reportImage" class="java.awt.Image"/>
+
+    <summary>
+        <band height="2280" splitType="Stretch">
+            <image scaleImage="RetainShape" hAlign="Center" vAlign="Top">
+                <reportElement x="0" y="0" width="2120" height="2280" uuid="919a1d47-4afb-4806-940a-11d74f833875"/>
+                <imageExpression><![CDATA[$P{reportImage}]]></imageExpression>
+            </image>
+        </band>
+    </summary>
+</jasperReport>
