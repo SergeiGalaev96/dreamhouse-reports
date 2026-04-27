@@ -256,6 +256,39 @@ public class ReportService {
         return new ReportData(data, header);
     }
 
+    public ReportData getProjectsOverviewData(String authorizationHeader) {
+        String url = apiBaseUrl + "/api/reports/projects-overview";
+
+        HttpHeaders headers = new HttpHeaders();
+        if (authorizationHeader != null && !authorizationHeader.isBlank()) {
+            headers.set(HttpHeaders.AUTHORIZATION, authorizationHeader);
+        }
+
+        ResponseEntity<Map> apiResponse = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(), headers),
+                Map.class
+        );
+
+        Map response = apiResponse.getBody();
+        if (response == null || !Boolean.TRUE.equals(response.get("success"))) {
+            throw new IllegalStateException("Projects overview API returned an unsuccessful response");
+        }
+
+        Map data = (Map) response.get("data");
+        if (data == null) {
+            throw new IllegalStateException("Projects overview API response does not contain data");
+        }
+
+        Map header = (Map) data.get("header");
+        if (header == null) {
+            throw new IllegalStateException("Projects overview API response does not contain header");
+        }
+
+        return new ReportData(data, header);
+    }
+
     public ReportData getEstimateStageData(Integer blockId, String authorizationHeader) {
         String url = apiBaseUrl + "/api/reports/estimate-stage";
 
@@ -1698,6 +1731,29 @@ public class ReportService {
         };
     }
 
+    public byte[] generateProjectsOverview(ReportData reportData, String format) throws Exception {
+        if ("xlsx".equalsIgnoreCase(format)) {
+            return generateProjectsOverviewXlsx(reportData);
+        }
+
+        if ("html".equalsIgnoreCase(format)) {
+            return generateProjectsOverviewHtml(reportData);
+        }
+
+        BufferedImage image = renderProjectsOverviewImage(reportData);
+        InputStream jrxmlStream = new ClassPathResource("reports/ScheduleImageReport.jrxml").getInputStream();
+        JasperReport report = JasperCompileManager.compileReport(jrxmlStream);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("reportImage", (Image) image);
+
+        JasperPrint print = JasperFillManager.fillReport(report, params, new JREmptyDataSource(1));
+        return switch (format == null ? "pdf" : format.toLowerCase()) {
+            case "docx" -> exportDocx(print);
+            default -> JasperExportManager.exportReportToPdf(print);
+        };
+    }
+
     private byte[] generateScheduleHtml(ReportData reportData) throws Exception {
         ScheduleRenderModel model = buildProjectScheduleModel(reportData);
         StringBuilder html = new StringBuilder();
@@ -1813,30 +1869,7 @@ public class ReportService {
         ByteArrayOutputStream imageOut = new ByteArrayOutputStream();
         javax.imageio.ImageIO.write(image, "png", imageOut);
         String base64 = Base64.getEncoder().encodeToString(imageOut.toByteArray());
-
-        String html = """
-                <!doctype html>
-                <html>
-                <head>
-                  <meta charset="UTF-8">
-                  <style>
-                    html, body { margin: 0; padding: 0; background: #f3f4f6; font-family: Arial, sans-serif; }
-                    .wrap { width: 100%%; min-height: 100vh; overflow: auto; box-sizing: border-box; padding: 16px; }
-                    .page { width: max-content; min-width: 100%%; }
-                    img { display: block; width: auto; max-width: none; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-                  </style>
-                </head>
-                <body>
-                  <div class="wrap">
-                    <div class="page">
-                      <img alt="form19" src="data:image/png;base64,%s" />
-                    </div>
-                  </div>
-                </body>
-                </html>
-                """.formatted(base64);
-
-        return html.getBytes(StandardCharsets.UTF_8);
+        return buildImagePreviewHtml(base64, "form19");
     }
 
     private byte[] generateMbpWriteOffHtml(ReportData reportData) throws Exception {
@@ -1844,30 +1877,15 @@ public class ReportService {
         ByteArrayOutputStream imageOut = new ByteArrayOutputStream();
         javax.imageio.ImageIO.write(image, "png", imageOut);
         String base64 = Base64.getEncoder().encodeToString(imageOut.toByteArray());
+        return buildImagePreviewHtml(base64, "mbp-write-off");
+    }
 
-        String html = """
-                <!doctype html>
-                <html>
-                <head>
-                  <meta charset="UTF-8">
-                  <style>
-                    html, body { margin: 0; padding: 0; background: #f3f4f6; font-family: Arial, sans-serif; }
-                    .wrap { width: 100%%; min-height: 100vh; overflow: auto; box-sizing: border-box; padding: 16px; }
-                    .page { width: max-content; min-width: 100%%; }
-                    img { display: block; width: auto; max-width: none; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-                  </style>
-                </head>
-                <body>
-                  <div class="wrap">
-                    <div class="page">
-                      <img alt="mbp-write-off" src="data:image/png;base64,%s" />
-                    </div>
-                  </div>
-                </body>
-                </html>
-                """.formatted(base64);
-
-        return html.getBytes(StandardCharsets.UTF_8);
+    private byte[] generateProjectsOverviewHtml(ReportData reportData) throws Exception {
+        BufferedImage image = renderProjectsOverviewImage(reportData);
+        ByteArrayOutputStream imageOut = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", imageOut);
+        String base64 = Base64.getEncoder().encodeToString(imageOut.toByteArray());
+        return buildImagePreviewHtml(base64, "projects-overview");
     }
 
     private byte[] generateMbpWriteOffXlsx(ReportData reportData) throws Exception {
@@ -1933,6 +1951,228 @@ public class ReportService {
             workbook.write(outputStream);
             return outputStream.toByteArray();
         }
+    }
+
+    private byte[] generateProjectsOverviewXlsx(ReportData reportData) throws Exception {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        Map totals = (Map) data.getOrDefault("totals", Map.of());
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Проекты");
+
+            CellStyle titleStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, null);
+            CellStyle metaStyle = createStyle(workbook, true, HorizontalAlignment.LEFT, null, null);
+            CellStyle headerStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle textStyle = createStyle(workbook, false, HorizontalAlignment.LEFT, null, BorderStyle.THIN);
+            CellStyle centerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle integerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle decimalStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle moneyIntegerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle moneyDecimalStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+
+            headerStyle.setWrapText(true);
+            integerStyle.setDataFormat(workbook.createDataFormat().getFormat("0"));
+            decimalStyle.setDataFormat(workbook.createDataFormat().getFormat("0.##"));
+            moneyIntegerStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            moneyDecimalStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.##"));
+
+            int[] widths = {1600, 8000, 3600, 5200, 7000, 3400, 3400, 4200, 4200, 3600, 3200, 3200, 3600, 3600, 3200, 3200, 3200, 3200, 3200};
+            for (int i = 0; i < widths.length; i++) {
+                sheet.setColumnWidth(i, widths[i]);
+            }
+
+            int lastColumn = widths.length - 1;
+            int rowIndex = 0;
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, lastColumn, "СВОДНЫЙ ОТЧЕТ ПО ПРОЕКТАМ", titleStyle);
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, lastColumn, "Дата формирования: " + formatIsoDate(header.get("report_date")), metaStyle);
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, lastColumn, "Проектов: " + formatSmartNumber(toDouble(header.get("projects_count"))), metaStyle);
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, lastColumn, "План бюджет: " + formatSmartNumber(toDouble(totals.get("total_planned_budget"))) + " | Факт бюджет: " + formatSmartNumber(toDouble(totals.get("total_actual_budget"))) + " | Средний прогресс: " + formatSmartNumber(toDouble(totals.get("avg_progress_percent"))) + "%", metaStyle);
+            rowIndex++;
+
+            Row headerRow = sheet.createRow(rowIndex++);
+            String[] headers = {
+                    "№", "Проект", "Статус", "Заказчик", "Адрес", "Начало", "Окончание",
+                    "План бюджет", "Факт бюджет", "% бюджета", "Прогресс %",
+                    "Блоки", "Площ. общ.", "Площ. продаж",
+                    "Заявки", "Закупы", "АВР", "Списания", "Перемещения"
+            };
+            for (int i = 0; i < headers.length; i++) {
+                writeCell(headerRow, i, headers[i], headerStyle);
+            }
+
+            int index = 1;
+            for (Map<String, Object> rowData : rows) {
+                Row row = sheet.createRow(rowIndex++);
+                writeSmartNumericCell(row, 0, index++, integerStyle, decimalStyle);
+                writeCell(row, 1, stringValue(rowData.get("project_name")), textStyle);
+                writeCell(row, 2, stringValue(rowData.get("status_name")), centerStyle);
+                writeCell(row, 3, stringValue(rowData.get("customer_name")), textStyle);
+                writeCell(row, 4, stringValue(rowData.get("address")), textStyle);
+                writeCell(row, 5, formatIsoDate(rowData.get("start_date")), centerStyle);
+                writeCell(row, 6, formatIsoDate(rowData.get("end_date")), centerStyle);
+                writeSmartNumericCell(row, 7, toDouble(rowData.get("planned_budget")), moneyIntegerStyle, moneyDecimalStyle);
+                writeSmartNumericCell(row, 8, toDouble(rowData.get("actual_budget")), moneyIntegerStyle, moneyDecimalStyle);
+                writeSmartNumericCell(row, 9, toDouble(rowData.get("budget_percent")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 10, toDouble(rowData.get("progress_percent")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 11, toDouble(rowData.get("blocks_count")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 12, toDouble(rowData.get("total_area")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 13, toDouble(rowData.get("sale_area")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 14, toDouble(rowData.get("material_requests_count")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 15, toDouble(rowData.get("purchase_orders_count")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 16, toDouble(rowData.get("signed_work_performed_count")), integerStyle, decimalStyle);
+                writeSmartNumericCell(row, 17,
+                        toDouble(rowData.get("material_write_off_count")) +
+                        toDouble(rowData.get("mbp_write_off_count")) +
+                        toDouble(rowData.get("processing_write_off_count")),
+                        integerStyle, decimalStyle
+                );
+                writeSmartNumericCell(row, 18, toDouble(rowData.get("transfer_count")), integerStyle, decimalStyle);
+            }
+
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    private BufferedImage renderProjectsOverviewImage(ReportData reportData) {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        Map totals = (Map) data.getOrDefault("totals", Map.of());
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+
+        int margin = 24;
+        int[] columnWidths = {42, 200, 90, 155, 180, 76, 76, 96, 96, 76, 76, 58, 72, 72, 58, 58, 58, 66, 66};
+        int tableWidth = 0;
+        for (int width : columnWidths) {
+            tableWidth += width;
+        }
+
+        int rowHeight = 26;
+        int headerHeight = 48;
+        int topHeight = 170;
+        int footerHeight = 40;
+        int width = margin * 2 + tableWidth;
+        int height = Math.max(560, topHeight + headerHeight + Math.max(1, rows.size()) * rowHeight + footerHeight);
+
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+
+        java.awt.Font regular = new java.awt.Font("Arial", java.awt.Font.PLAIN, 11);
+        java.awt.Font bold = new java.awt.Font("Arial", java.awt.Font.BOLD, 11);
+        java.awt.Font title = new java.awt.Font("Arial", java.awt.Font.BOLD, 18);
+
+        g.setColor(Color.BLACK);
+        g.setFont(title);
+        FontMetrics titleMetrics = g.getFontMetrics();
+        drawCenteredString(g, "СВОДНЫЙ ОТЧЕТ ПО ПРОЕКТАМ", margin, 28, tableWidth, 24, titleMetrics);
+
+        g.setFont(bold);
+        FontMetrics boldMetrics = g.getFontMetrics();
+        int y = 62;
+        drawLeftString(g, "Дата формирования: " + formatIsoDate(header.get("report_date")), margin, y, tableWidth, 18, boldMetrics);
+        y += 18;
+        drawLeftString(g, "Проектов: " + formatSmartNumber(toDouble(header.get("projects_count"))), margin, y, tableWidth, 18, boldMetrics);
+        y += 18;
+        drawLeftString(
+                g,
+                "План бюджет: " + formatSmartNumber(toDouble(totals.get("total_planned_budget")))
+                        + "   Факт бюджет: " + formatSmartNumber(toDouble(totals.get("total_actual_budget")))
+                        + "   Остаток: " + formatSmartNumber(toDouble(totals.get("total_remaining_budget"))),
+                margin,
+                y,
+                tableWidth,
+                18,
+                boldMetrics
+        );
+        y += 18;
+        drawLeftString(
+                g,
+                "Средний прогресс: " + formatSmartNumber(toDouble(totals.get("avg_progress_percent"))) + "%"
+                        + "   Блоков: " + formatSmartNumber(toDouble(totals.get("total_blocks")))
+                        + "   Складов: " + formatSmartNumber(toDouble(totals.get("total_warehouses")))
+                        + "   Смет: " + formatSmartNumber(toDouble(totals.get("total_estimates"))),
+                margin,
+                y,
+                tableWidth,
+                18,
+                boldMetrics
+        );
+
+        String[] headers = {
+                "№", "Проект", "Статус", "Заказчик", "Адрес", "Начало", "Окончание",
+                "План\nбюджет", "Факт\nбюджет", "%\nбюдж.", "Прогр.\n%", "Блоки",
+                "Общ.\nплощ.", "Прод.\nплощ.", "Заявки", "Закупы", "АВР", "Спис.", "Перем."
+        };
+
+        int tableTop = topHeight;
+        int currentX = margin;
+        g.setFont(bold);
+        FontMetrics headerMetrics = g.getFontMetrics();
+        for (int i = 0; i < headers.length; i++) {
+            drawHeaderCell(g, headers[i], currentX, tableTop, columnWidths[i], headerHeight, headerMetrics);
+            currentX += columnWidths[i];
+        }
+
+        g.setFont(regular);
+        FontMetrics regularMetrics = g.getFontMetrics();
+        int rowY = tableTop + headerHeight;
+        int rowNo = 1;
+        for (Map<String, Object> rowData : rows) {
+            currentX = margin;
+            String[] values = {
+                    formatSmartNumber(rowNo++),
+                    stringValue(rowData.get("project_name")),
+                    stringValue(rowData.get("status_name")),
+                    stringValue(rowData.get("customer_name")),
+                    stringValue(rowData.get("address")),
+                    formatIsoDate(rowData.get("start_date")),
+                    formatIsoDate(rowData.get("end_date")),
+                    formatSmartNumber(toDouble(rowData.get("planned_budget"))),
+                    formatSmartNumber(toDouble(rowData.get("actual_budget"))),
+                    formatSmartNumber(toDouble(rowData.get("budget_percent"))),
+                    formatSmartNumber(toDouble(rowData.get("progress_percent"))),
+                    formatSmartNumber(toDouble(rowData.get("blocks_count"))),
+                    formatSmartNumber(toDouble(rowData.get("total_area"))),
+                    formatSmartNumber(toDouble(rowData.get("sale_area"))),
+                    formatSmartNumber(toDouble(rowData.get("material_requests_count"))),
+                    formatSmartNumber(toDouble(rowData.get("purchase_orders_count"))),
+                    formatSmartNumber(toDouble(rowData.get("signed_work_performed_count"))),
+                    formatSmartNumber(
+                            toDouble(rowData.get("material_write_off_count"))
+                                    + toDouble(rowData.get("mbp_write_off_count"))
+                                    + toDouble(rowData.get("processing_write_off_count"))
+                    ),
+                    formatSmartNumber(toDouble(rowData.get("transfer_count")))
+            };
+
+            for (int i = 0; i < values.length; i++) {
+                g.drawRect(currentX, rowY, columnWidths[i], rowHeight);
+                if (i >= 1 && i <= 4) {
+                    drawLeftString(g, values[i], currentX + 4, rowY, columnWidths[i] - 8, rowHeight, regularMetrics);
+                } else {
+                    drawCenteredString(g, values[i], currentX, rowY, columnWidths[i], rowHeight, regularMetrics);
+                }
+                currentX += columnWidths[i];
+            }
+            rowY += rowHeight;
+        }
+
+        if (rows.isEmpty()) {
+            currentX = margin;
+            for (int columnWidth : columnWidths) {
+                g.drawRect(currentX, rowY, columnWidth, rowHeight);
+                currentX += columnWidth;
+            }
+            drawCenteredString(g, "Проектов для отображения нет", margin, rowY, tableWidth, rowHeight, regularMetrics);
+        }
+
+        g.dispose();
+        return image;
     }
 
     private byte[] generateScheduleXlsx(ReportData reportData) throws Exception {
@@ -3220,6 +3460,17 @@ public class ReportService {
         return LocalDate.parse(text, DateTimeFormatter.ISO_LOCAL_DATE);
     }
 
+    private String formatIsoDate(Object value) {
+        String text = stringValue(value);
+        if (text.isBlank()) {
+            return "";
+        }
+        if (text.length() >= 10) {
+            return text.substring(0, 10);
+        }
+        return text;
+    }
+
     private void drawCenteredText(Graphics2D g, String text, int x, int y, int width, int height) {
         FontMetrics metrics = g.getFontMetrics();
         int textX = x + Math.max(0, (width - metrics.stringWidth(text)) / 2);
@@ -3232,6 +3483,10 @@ public class ReportService {
     }
 
     public byte[] generateEstimateStage(ReportData reportData, String format) throws Exception {
+        if ("html".equalsIgnoreCase(format)) {
+            return generateEstimateStageHtml(reportData);
+        }
+
         if (!"xlsx".equalsIgnoreCase(format)) {
             throw new IllegalArgumentException("Unsupported estimate stage format: " + format);
         }
@@ -3264,6 +3519,132 @@ public class ReportService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private byte[] generateEstimateStageHtml(ReportData reportData) {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> stages = (List<Map<String, Object>>) data.getOrDefault("stages", List.of());
+        Map<String, Object> summary = (Map<String, Object>) data.getOrDefault("summary", Map.of());
+
+        StringBuilder html = new StringBuilder();
+        html.append("<!doctype html><html><head><meta charset=\"UTF-8\">");
+        html.append("<style>");
+        html.append("html,body{margin:0;padding:0;background:#f3f4f6;color:#111827;font-family:Arial,sans-serif;}");
+        html.append("body{padding:16px;}");
+        html.append(".page{width:max-content;min-width:100%;background:#fff;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.08);}");
+        html.append(".meta{font-size:13px;font-weight:700;margin-bottom:4px;}");
+        html.append(".title{font-size:22px;font-weight:700;text-align:center;margin:18px 0 14px;}");
+        html.append(".stage-title{font-size:18px;font-weight:700;text-align:center;margin:20px 0 10px;}");
+        html.append(".section-title{font-size:14px;font-weight:700;margin:10px 0 6px;}");
+        html.append("table{border-collapse:collapse;width:max-content;min-width:100%;margin-bottom:16px;}");
+        html.append("th,td{border:1px solid #000;padding:6px 8px;font-size:12px;vertical-align:middle;text-align:center;}");
+        html.append("th{font-weight:700;background:#f8fafc;}");
+        html.append(".left{text-align:left;}");
+        html.append(".total td{font-weight:700;background:#fff7bf;}");
+        html.append(".summary-total td{font-weight:700;background:#fff7bf;}");
+        html.append("</style></head><body><div class='page'>");
+        html.append("<div class='meta'>Заказчик: ").append(escapeHtml(stringValue(header.get("customer_name")))).append("</div>");
+        html.append("<div class='meta'>Объект: ").append(escapeHtml(stringValue(header.get("project_name")))).append(", ").append(escapeHtml(stringValue(header.get("block_name")))).append("</div>");
+
+        for (Map<String, Object> stage : stages) {
+            List<Map<String, Object>> subsections = (List<Map<String, Object>>) stage.getOrDefault("subsections", List.of());
+            List<Map<String, Object>> materialRows = (List<Map<String, Object>>) stage.getOrDefault("material_rows", List.of());
+            List<Map<String, Object>> serviceRows = (List<Map<String, Object>>) stage.getOrDefault("service_rows", List.of());
+
+            html.append("<div class='stage-title'>Расход материалов и услуг на ")
+                    .append(escapeHtml(stringValue(stage.get("stage_name"))))
+                    .append("</div>");
+
+            appendEstimateStageSectionHtml(html, "Материалы", subsections, materialRows, toDouble(stage.get("material_total_amount")));
+            appendEstimateStageSectionHtml(html, "Услуги", subsections, serviceRows, toDouble(stage.get("service_total_amount")));
+
+            html.append("<table><tbody><tr class='total'>")
+                    .append("<td style='width:60px'></td>")
+                    .append("<td class='left' colspan='").append(Math.max(2, subsections.size() + 2)).append("'>ИТОГО СМР</td>")
+                    .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(stage.get("total_amount"))))).append("</td>")
+                    .append("</tr></tbody></table>");
+        }
+
+        List<Map<String, Object>> summaryRows = (List<Map<String, Object>>) summary.getOrDefault("rows", List.of());
+        html.append("<div class='stage-title'>Себестоимость за 1 м2</div>");
+        html.append("<div class='meta'>Общая площадь S=").append(escapeHtml(formatSmartNumber(toDouble(summary.get("total_area"))))).append("</div>");
+        html.append("<div class='meta'>Продаваемая площадь S=").append(escapeHtml(formatSmartNumber(toDouble(summary.get("sale_area"))))).append("</div>");
+        html.append("<table><thead><tr>")
+                .append("<th>№</th><th>Наименование</th><th>Ст-ть всего, сом</th><th>Ст-ть всего, $</th><th>С/м2 продаж</th><th>С/м2 общая</th>")
+                .append("</tr></thead><tbody>");
+        int rowNo = 1;
+        for (Map<String, Object> row : summaryRows) {
+            html.append("<tr>")
+                    .append("<td>").append(rowNo++).append("</td>")
+                    .append("<td class='left'>").append(escapeHtml(stringValue(row.get("name")))).append("</td>")
+                    .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(row.get("total_amount"))))).append("</td>")
+                    .append("<td></td>")
+                    .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(row.get("cost_per_sale_area"))))).append("</td>")
+                    .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(row.get("cost_per_total_area"))))).append("</td>")
+                    .append("</tr>");
+        }
+        html.append("<tr class='summary-total'>")
+                .append("<td></td>")
+                .append("<td class='left'>Себестоимость за 1 м2</td>")
+                .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(summary.get("total_amount"))))).append("</td>")
+                .append("<td></td>")
+                .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(summary.get("total_cost_per_sale_area"))))).append("</td>")
+                .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(summary.get("total_cost_per_total_area"))))).append("</td>")
+                .append("</tr>");
+        html.append("</tbody></table>");
+        html.append("</div></body></html>");
+        return html.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private void appendEstimateStageSectionHtml(
+            StringBuilder html,
+            String title,
+            List<Map<String, Object>> subsections,
+            List<Map<String, Object>> rows,
+            double totalAmount
+    ) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+
+        html.append("<div class='section-title'>").append(escapeHtml(title)).append("</div>");
+        html.append("<table><thead><tr>")
+                .append("<th>№</th><th>Наименование</th><th>ЕИ</th>");
+        for (Map<String, Object> subsection : subsections) {
+            html.append("<th>").append(escapeHtml(stringValue(subsection.get("subsection_name")))).append("</th>");
+        }
+        html.append("<th>Кол-во всего</th><th>Ст-ть ед., сом</th><th>Ст-ть всего, сом</th>")
+                .append("</tr></thead><tbody>");
+
+        int rowNo = 1;
+        for (Map<String, Object> row : rows) {
+            html.append("<tr>")
+                    .append("<td>").append(rowNo++).append("</td>")
+                    .append("<td class='left'>").append(escapeHtml(stringValue(row.get("item_name")))).append("</td>")
+                    .append("<td>").append(escapeHtml(stringValue(row.get("unit_name")))).append("</td>");
+
+            Map subsectionQuantities = (Map) row.getOrDefault("subsection_quantities", Map.of());
+            for (Map<String, Object> subsection : subsections) {
+                Object value = subsectionQuantities.get(String.valueOf(toInt(subsection.get("subsection_id"))));
+                if (value == null) {
+                    value = subsectionQuantities.get(toInt(subsection.get("subsection_id")));
+                }
+                html.append("<td>").append(escapeHtml(formatSmartNumber(toDouble(value)))).append("</td>");
+            }
+
+            html.append("<td>").append(escapeHtml(formatSmartNumber(toDouble(row.get("total_quantity"))))).append("</td>")
+                    .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(row.get("unit_price"))))).append("</td>")
+                    .append("<td>").append(escapeHtml(formatSmartNumber(toDouble(row.get("total_amount"))))).append("</td>")
+                    .append("</tr>");
+        }
+
+        html.append("<tr class='total'>")
+                .append("<td></td>")
+                .append("<td class='left' colspan='").append(Math.max(2, subsections.size() + 2)).append("'>Итого ").append(escapeHtml(title.toLowerCase(Locale.ROOT))).append("</td>")
+                .append("<td>").append(escapeHtml(formatSmartNumber(totalAmount))).append("</td>")
+                .append("</tr>");
+        html.append("</tbody></table>");
     }
 
     private void writeEstimateStageSheet(
@@ -3462,6 +3843,32 @@ public class ReportService {
                 .replace("\"", "&quot;");
     }
 
+    private byte[] buildImagePreviewHtml(String base64, String alt) {
+        String html = """
+                <!doctype html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    html, body { margin: 0; padding: 0; background: #f3f4f6; font-family: Arial, sans-serif; }
+                    .wrap { width: 100%%; min-height: 100vh; overflow: auto; box-sizing: border-box; padding: 16px; }
+                    .page { width: max-content; min-width: 100%%; }
+                    img { display: block; width: auto; max-width: none; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+                  </style>
+                </head>
+                <body>
+                  <div class="wrap">
+                    <div class="page">
+                      <img alt="%s" src="data:image/png;base64,%s" />
+                    </div>
+                  </div>
+                </body>
+                </html>
+                """.formatted(alt, base64);
+
+        return html.getBytes(StandardCharsets.UTF_8);
+    }
+
     public String buildWorkPerformedFilename(String id, String format, String authorizationHeader) {
         return buildWorkPerformedFilename(getWorkPerformedData(id, authorizationHeader), id, format);
     }
@@ -3503,6 +3910,11 @@ public class ReportService {
         String projectName = stringValue(header.get("project_name"));
         String periodLabel = stringValue(header.get("period_label")).replace(" г.", "");
         return sanitizeFilename("Списание МБП " + projectName + " " + periodLabel + "." + format);
+    }
+
+    public String buildProjectsOverviewFilename(ReportData reportData, String format) {
+        Map header = reportData.header();
+        return sanitizeFilename("Сводка по проектам " + formatIsoDate(header.get("report_date")) + "." + format);
     }
 
     public String buildEstimateStageFilename(ReportData reportData, String format) {

@@ -209,6 +209,40 @@ public class ReportController {
         }
     }
 
+    @GetMapping("/projects-overview")
+    public ResponseEntity<byte[]> generateProjectsOverview(
+            @RequestParam(defaultValue = "pdf") String format,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        try {
+            String normalizedFormat = normalizeFormat(format);
+            ReportService.ReportData reportData = reportService.getProjectsOverviewData(authorizationHeader);
+            byte[] file = reportService.generateProjectsOverview(reportData, normalizedFormat);
+            String filename = reportService.buildProjectsOverviewFilename(reportData, normalizedFormat);
+
+            String contentType = switch (normalizedFormat) {
+                case "html" -> MediaType.TEXT_HTML_VALUE + "; charset=UTF-8";
+                case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                default -> MediaType.APPLICATION_PDF_VALUE;
+            };
+
+            String disposition = normalizedFormat.equals("html")
+                    ? "inline"
+                    : "attachment";
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, contentType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
+                    .body(file);
+        } catch (Exception e) {
+            String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Projects overview generation failed" : e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
+                    .body(message.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     @GetMapping("/estimate-stage")
     public ResponseEntity<byte[]> generateEstimateStage(
             @RequestParam Integer blockId,
@@ -217,7 +251,7 @@ public class ReportController {
     ) throws Exception {
         try {
             String normalizedFormat = format == null ? "xlsx" : format.toLowerCase();
-            if (!"xlsx".equals(normalizedFormat)) {
+            if (!"xlsx".equals(normalizedFormat) && !"html".equals(normalizedFormat)) {
                 normalizedFormat = "xlsx";
             }
 
@@ -225,9 +259,14 @@ public class ReportController {
             byte[] file = reportService.generateEstimateStage(reportData, normalizedFormat);
             String filename = reportService.buildEstimateStageFilename(reportData, normalizedFormat);
 
+            String contentType = "html".equals(normalizedFormat)
+                    ? MediaType.TEXT_HTML_VALUE + "; charset=UTF-8"
+                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            String disposition = "html".equals(normalizedFormat) ? "inline" : "attachment";
+
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("attachment", filename))
+                    .header(HttpHeaders.CONTENT_TYPE, contentType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Estimate stage generation failed" : e.getMessage());
