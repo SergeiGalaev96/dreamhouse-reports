@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="PaymentCashOrderReport"
+              pageWidth="595" pageHeight="842"
+              columnWidth="515"
+              leftMargin="40" rightMargin="40"
+              topMargin="32" bottomMargin="32"
+              uuid="1e6765a2-89d4-4a9f-a9be-0f95c8a78144">
+
+    <style name="Base" isDefault="true" fontName="DejaVu Sans" fontSize="10" pdfEncoding="Identity-H" isPdfEmbedded="true"/>
+    <style name="Title" fontName="DejaVu Sans" fontSize="15" isBold="true" pdfEncoding="Identity-H" isPdfEmbedded="true"/>
+    <style name="Small" fontName="DejaVu Sans" fontSize="8" pdfEncoding="Identity-H" isPdfEmbedded="true"/>
+    <style name="Label" fontName="DejaVu Sans" fontSize="9" forecolor="#555555" pdfEncoding="Identity-H" isPdfEmbedded="true"/>
+
+    <parameter name="orderTypeName" class="java.lang.String"/>
+    <parameter name="orderShortName" class="java.lang.String"/>
+    <parameter name="orderNumber" class="java.lang.String"/>
+    <parameter name="orderDate" class="java.lang.String"/>
+    <parameter name="organizationName" class="java.lang.String"/>
+    <parameter name="projectName" class="java.lang.String"/>
+    <parameter name="blockName" class="java.lang.String"/>
+    <parameter name="articleName" class="java.lang.String"/>
+    <parameter name="title" class="java.lang.String"/>
+    <parameter name="statusName" class="java.lang.String"/>
+    <parameter name="operationLabel" class="java.lang.String"/>
+    <parameter name="counterpartyName" class="java.lang.String"/>
+    <parameter name="counterpartyInn" class="java.lang.String"/>
+    <parameter name="entityLabel" class="java.lang.String"/>
+    <parameter name="basis" class="java.lang.String"/>
+    <parameter name="createdByName" class="java.lang.String"/>
+    <parameter name="amountLabel" class="java.lang.String"/>
+    <parameter name="amountKgsLabel" class="java.lang.String"/>
+    <parameter name="currencyRateLabel" class="java.lang.String"/>
+    <parameter name="amountInWords" class="java.lang.String"/>
+
+    <title>
+        <band height="720">
+            <staticText>
+                <reportElement x="0" y="0" width="515" height="18"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle"/>
+                <text><![CDATA[Унифицированная форма кассового ордера]]></text>
+            </staticText>
+
+            <textField>
+                <reportElement x="0" y="42" width="515" height="24"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font size="15" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{orderTypeName}.toUpperCase()]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="0" y="70" width="515" height="22"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font size="13" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{orderShortName} + " № " + $P{orderNumber} + " от " + $P{orderDate}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="0" y="115" width="100" height="16" style="Label"/>
+                <text><![CDATA[Организация]]></text>
+            </staticText>
+            <textField isStretchWithOverflow="true">
+                <reportElement x="120" y="112" width="395" height="22"/>
+                <textElement verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{organizationName}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="134" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="150" width="100" height="16" style="Label"/>
+                <text><![CDATA[Объект]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="120" y="147" width="395" height="22"/>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{projectName} + ($P{blockName}.isBlank() ? "" : " / " + $P{blockName})]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="169" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="185" width="100" height="16" style="Label"/>
+                <text><![CDATA[Статья ДДС]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="120" y="182" width="395" height="22"/>
+                <textElement verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{articleName}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="204" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="220" width="100" height="16" style="Label"/>
+                <text><![CDATA[Назначение]]></text>
+            </staticText>
+            <textField isStretchWithOverflow="true">
+                <reportElement x="120" y="217" width="395" height="36"/>
+                <textElement verticalAlignment="Top"/>
+                <textFieldExpression><![CDATA[$P{title}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="254" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="270" width="100" height="16" style="Label"/>
+                <text><![CDATA[Сумма]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="120" y="265" width="170" height="26"/>
+                <textElement verticalAlignment="Middle">
+                    <font size="13" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{amountLabel}]]></textFieldExpression>
+            </textField>
+            <staticText>
+                <reportElement x="310" y="270" width="65" height="16" style="Label"/>
+                <text><![CDATA[В сомах]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="375" y="265" width="140" height="26"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font size="13" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{amountKgsLabel}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="292" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="310" width="100" height="16" style="Label"/>
+                <text><![CDATA[Сумма прописью]]></text>
+            </staticText>
+            <textField isStretchWithOverflow="true">
+                <reportElement x="120" y="307" width="395" height="30"/>
+                <textElement verticalAlignment="Top"/>
+                <textFieldExpression><![CDATA[$P{amountInWords}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="338" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="355" width="100" height="16" style="Label"/>
+                <text><![CDATA[Контрагент]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="120" y="352" width="395" height="22"/>
+                <textElement verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{operationLabel} + ": " + $P{counterpartyName}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="374" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="390" width="100" height="16" style="Label"/>
+                <text><![CDATA[ИНН]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="120" y="387" width="395" height="22"/>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{counterpartyInn}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="409" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="425" width="100" height="16" style="Label"/>
+                <text><![CDATA[Основание]]></text>
+            </staticText>
+            <textField isStretchWithOverflow="true">
+                <reportElement x="120" y="422" width="395" height="45"/>
+                <textElement verticalAlignment="Top"/>
+                <textFieldExpression><![CDATA[$P{basis}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="468" width="395" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="485" width="100" height="16" style="Label"/>
+                <text><![CDATA[Источник]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="120" y="482" width="175" height="22"/>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{entityLabel}]]></textFieldExpression>
+            </textField>
+            <staticText>
+                <reportElement x="310" y="485" width="65" height="16" style="Label"/>
+                <text><![CDATA[Статус]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="375" y="482" width="140" height="22"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{statusName}]]></textFieldExpression>
+            </textField>
+            <line>
+                <reportElement x="120" y="504" width="175" height="1"/>
+            </line>
+            <line>
+                <reportElement x="375" y="504" width="140" height="1"/>
+            </line>
+
+            <textField>
+                <reportElement x="120" y="515" width="395" height="18" style="Small"/>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{currencyRateLabel}]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="0" y="580" width="120" height="18" style="Label"/>
+                <text><![CDATA[Главный бухгалтер]]></text>
+            </staticText>
+            <line>
+                <reportElement x="145" y="598" width="145" height="1"/>
+            </line>
+            <staticText>
+                <reportElement x="320" y="580" width="70" height="18" style="Label"/>
+                <text><![CDATA[Кассир]]></text>
+            </staticText>
+            <line>
+                <reportElement x="400" y="598" width="115" height="1"/>
+            </line>
+
+            <staticText>
+                <reportElement x="0" y="635" width="120" height="18" style="Label"/>
+                <text><![CDATA[Получил / выдал]]></text>
+            </staticText>
+            <line>
+                <reportElement x="145" y="653" width="370" height="1"/>
+            </line>
+
+            <textField>
+                <reportElement x="0" y="682" width="515" height="18" style="Small"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$P{createdByName}.isBlank() ? "" : "Создал: " + $P{createdByName}]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+</jasperReport>

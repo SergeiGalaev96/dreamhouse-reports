@@ -276,6 +276,41 @@ public class ReportController {
         }
     }
 
+    @GetMapping("/paymentCashOrder/{id}")
+    public ResponseEntity<byte[]> generatePaymentCashOrder(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "pdf") String format,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        try {
+            String normalizedFormat = normalizeFormat(format);
+            ReportService.ReportData reportData = reportService.getPaymentCashOrderData(id, authorizationHeader);
+            byte[] file = reportService.generatePaymentCashOrder(reportData, normalizedFormat);
+            String filename = reportService.buildPaymentCashOrderFilename(reportData, normalizedFormat);
+
+            String contentType = switch (normalizedFormat) {
+                case "html" -> MediaType.TEXT_HTML_VALUE + "; charset=UTF-8";
+                case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                default -> MediaType.APPLICATION_PDF_VALUE;
+            };
+
+            String disposition = normalizedFormat.equals("html")
+                    ? "inline"
+                    : "attachment";
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, contentType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
+                    .body(file);
+        } catch (Exception e) {
+            String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Payment cash order generation failed" : e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
+                    .body(message.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     @GetMapping("/schedule")
     public ResponseEntity<byte[]> generateSchedule(
             @RequestParam Integer projectId,

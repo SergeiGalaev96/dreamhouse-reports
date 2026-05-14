@@ -397,6 +397,39 @@ public class ReportService {
         return new ReportData(data, header);
     }
 
+    public ReportData getPaymentCashOrderData(String id, String authorizationHeader) {
+        String url = apiBaseUrl + "/api/reports/paymentCashOrder/" + id;
+
+        HttpHeaders headers = new HttpHeaders();
+        if (authorizationHeader != null && !authorizationHeader.isBlank()) {
+            headers.set(HttpHeaders.AUTHORIZATION, authorizationHeader);
+        }
+
+        ResponseEntity<Map> apiResponse = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class
+        );
+
+        Map response = apiResponse.getBody();
+        if (response == null || !Boolean.TRUE.equals(response.get("success"))) {
+            throw new IllegalStateException("Payment cash order API returned an unsuccessful response");
+        }
+
+        Map data = (Map) response.get("data");
+        if (data == null) {
+            throw new IllegalStateException("Payment cash order API response does not contain data");
+        }
+
+        Map header = (Map) data.get("header");
+        if (header == null) {
+            throw new IllegalStateException("Payment cash order API response does not contain header");
+        }
+
+        return new ReportData(data, header);
+    }
+
     public byte[] generateWorkPerformed(String id, String format, String authorizationHeader) throws Exception {
         return generateWorkPerformed(getWorkPerformedData(id, authorizationHeader), id, format);
     }
@@ -485,6 +518,223 @@ public class ReportService {
             case "html" -> exportHtml(print);
             default -> JasperExportManager.exportReportToPdf(print);
         };
+    }
+
+    public byte[] generatePaymentCashOrder(ReportData reportData, String format) throws Exception {
+        if ("xlsx".equalsIgnoreCase(format)) {
+            return generatePaymentCashOrderXlsx(reportData);
+        }
+
+        InputStream jrxmlStream =
+                new ClassPathResource("reports/PaymentCashOrderReport.jrxml").getInputStream();
+
+        JasperReport report = JasperCompileManager.compileReport(jrxmlStream);
+        Map header = reportData.header();
+
+        double amount = toDouble(header.get("amount"));
+        double amountKgs = toDouble(firstNonNull(header.get("amount_kgs"), amount));
+        String currency = firstNonBlank(header.get("currency"), "KGS");
+        String orderShortName = firstNonBlank(header.get("order_short_name"), "ПКО");
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("orderTypeName", firstNonBlank(header.get("order_type_name"), "Кассовый ордер"));
+        params.put("orderShortName", orderShortName);
+        params.put("orderNumber", firstNonBlank(header.get("order_number"), header.get("id")));
+        params.put("orderDate", stringValue(header.get("order_date")));
+        params.put("organizationName", firstNonBlank(header.get("organization_name"), "ОсОО \"СК Дрим Хаус\""));
+        params.put("projectName", stringValue(header.get("project_name")));
+        params.put("blockName", stringValue(header.get("block_name")));
+        params.put("articleName", stringValue(header.get("article_name")));
+        params.put("title", stringValue(header.get("title")));
+        params.put("statusName", stringValue(header.get("status_name")));
+        params.put("operationLabel", firstNonBlank(header.get("operation_label"), "Контрагент"));
+        params.put("counterpartyName", stringValue(header.get("counterparty_name")));
+        params.put("counterpartyInn", stringValue(header.get("counterparty_inn")));
+        params.put("entityLabel", stringValue(header.get("entity_label")));
+        params.put("basis", stringValue(header.get("basis")));
+        params.put("createdByName", stringValue(header.get("created_by_name")));
+        params.put("amountLabel", formatSmartNumber(amount) + " " + currency);
+        params.put("amountKgsLabel", formatSmartNumber(amountKgs) + " KGS");
+        params.put("currencyRateLabel", stringValue(header.get("currency_rate_label")));
+        params.put("amountInWords", formatSmartNumber(amount) + " " + currency);
+
+        JasperPrint print = JasperFillManager.fillReport(
+                report,
+                params,
+                new JREmptyDataSource(1)
+        );
+
+        return switch (format) {
+            case "xlsx" -> exportXlsx(print);
+            case "docx" -> exportDocx(print);
+            case "html" -> exportHtml(print);
+            default -> JasperExportManager.exportReportToPdf(print);
+        };
+    }
+
+    private byte[] generatePaymentCashOrderXlsx(ReportData reportData) throws Exception {
+        Map header = reportData.header();
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet(firstNonBlank(header.get("order_short_name"), "Order"));
+        sheet.setDisplayGridlines(true);
+
+        for (int i = 0; i < 37; i++) {
+            sheet.setColumnWidth(i, 1050);
+        }
+        for (int i = 16; i <= 23; i++) {
+            sheet.setColumnWidth(i, 1250);
+        }
+        for (int i = 25; i <= 33; i++) {
+            sheet.setColumnWidth(i, 1250);
+        }
+        for (int i = 0; i <= 34; i++) {
+            Row row = sheet.createRow(i);
+            row.setHeightInPoints(18);
+        }
+        setRowHeight(sheet, 1, 20);
+        setRowHeight(sheet, 2, 20);
+        setRowHeight(sheet, 3, 30);
+        setRowHeight(sheet, 11, 24);
+        setRowHeight(sheet, 13, 24);
+        setRowHeight(sheet, 14, 42);
+        setRowHeight(sheet, 15, 24);
+        setRowHeight(sheet, 16, 24);
+        setRowHeight(sheet, 18, 24);
+        setRowHeight(sheet, 19, 34);
+        setRowHeight(sheet, 21, 34);
+
+        CellStyle normal = createCashOrderStyle(workbook, false, 10, HorizontalAlignment.LEFT, BorderStyle.NONE);
+        CellStyle center = createCashOrderStyle(workbook, false, 10, HorizontalAlignment.CENTER, BorderStyle.NONE);
+        CellStyle right = createCashOrderStyle(workbook, false, 10, HorizontalAlignment.RIGHT, BorderStyle.NONE);
+        CellStyle bold = createCashOrderStyle(workbook, true, 10, HorizontalAlignment.LEFT, BorderStyle.NONE);
+        CellStyle title = createCashOrderStyle(workbook, true, 14, HorizontalAlignment.CENTER, BorderStyle.NONE);
+        CellStyle orderTitleStyle = createCashOrderStyle(workbook, true, 13, HorizontalAlignment.CENTER, BorderStyle.NONE);
+        CellStyle smallCenter = createCashOrderStyle(workbook, false, 8, HorizontalAlignment.CENTER, BorderStyle.NONE);
+        CellStyle smallCenterShrink = createCashOrderStyle(workbook, false, 8, HorizontalAlignment.CENTER, BorderStyle.NONE);
+        smallCenterShrink.setShrinkToFit(true);
+        CellStyle tableHeader = createCashOrderStyle(workbook, false, 10, HorizontalAlignment.CENTER, BorderStyle.THIN);
+        CellStyle tableBoldCenter = createCashOrderStyle(workbook, true, 10, HorizontalAlignment.CENTER, BorderStyle.THIN);
+        CellStyle tableBoldRight = createCashOrderStyle(workbook, true, 10, HorizontalAlignment.RIGHT, BorderStyle.THIN);
+        CellStyle tableLeft = createCashOrderStyle(workbook, false, 10, HorizontalAlignment.LEFT, BorderStyle.THIN);
+        CellStyle receiptTitle = createCashOrderStyle(workbook, true, 13, HorizontalAlignment.CENTER, BorderStyle.NONE);
+
+        String orderShortName = firstNonBlank(header.get("order_short_name"), "ПКО");
+        String orderTitle = "ПКО".equalsIgnoreCase(orderShortName)
+                ? "ПРИХОДНЫЙ КАССОВЫЙ ОРДЕР"
+                : "РАСХОДНЫЙ КАССОВЫЙ ОРДЕР";
+        String receiptTitleText = "ПКО".equalsIgnoreCase(orderShortName) ? "КВИТАНЦИЯ" : "КВИТАНЦИЯ";
+        String organization = firstNonBlank(header.get("organization_name"), "ОсОО \"СК Дрим Хаус\"");
+        String orderNumber = firstNonBlank(header.get("order_number"), header.get("id"));
+        String orderDate = stringValue(header.get("order_date"));
+        String projectName = stringValue(header.get("project_name"));
+        String blockName = stringValue(header.get("block_name"));
+        String articleName = stringValue(header.get("article_name"));
+        String titleText = stringValue(header.get("title"));
+        String counterparty = stringValue(header.get("counterparty_name"));
+        String counterpartyInn = stringValue(header.get("counterparty_inn"));
+        String basis = firstNonBlank(header.get("basis"), titleText);
+        String currency = firstNonBlank(header.get("currency"), "KGS");
+        double amount = toDouble(header.get("amount"));
+        double amountKgs = toDouble(firstNonNull(header.get("amount_kgs"), amount));
+        String amountLabel = formatSmartNumber(amount) + " " + currency;
+        String amountKgsLabel = formatSmartNumber(amountKgs);
+        String amountWords = cashOrderAmountToWords(amount, currency);
+        String receiptIntro = "ПКО".equalsIgnoreCase(orderShortName) ? "Принято от: " : "Выдано: ";
+        String context = (projectName + (blockName.isBlank() ? "" : " / " + blockName)).trim();
+
+        writeMerged(sheet, 1, 16, 23, "Унифицированная форма КО-1", center);
+        writeMerged(sheet, 2, 16, 23, "Утверждена постановлением Нацстаткомитета", smallCenterShrink);
+        writeMerged(sheet, 3, 16, 23, "Кыргызской Республики от 07.04.03\n№ 4", smallCenterShrink);
+
+        writeMerged(sheet, 5, 2, 15, organization, title);
+        writeMerged(sheet, 7, 7, 15, "организация", smallCenter);
+        writeMerged(sheet, 9, 7, 15, "подразделение", smallCenter);
+
+        writeMerged(sheet, 5, 20, 23, "Код", tableHeader);
+        writeMerged(sheet, 6, 16, 19, "Форма по ГКУД", center);
+        writeMerged(sheet, 6, 20, 23, "0310001", tableBoldCenter);
+        writeMerged(sheet, 7, 16, 19, "по ОКПО", center);
+        writeMerged(sheet, 7, 20, 23, "31431840", tableBoldCenter);
+        writeMerged(sheet, 11, 2, 13, orderTitle, orderTitleStyle);
+        writeMerged(sheet, 10, 14, 19, "Номер документа", tableHeader);
+        writeMerged(sheet, 10, 20, 23, "Дата составления", tableHeader);
+        writeMerged(sheet, 11, 14, 19, orderShortName + "-" + orderNumber, tableBoldCenter);
+        writeMerged(sheet, 11, 20, 23, orderDate, tableBoldCenter);
+
+        writeMerged(sheet, 13, 2, 5, "Дебет", tableHeader);
+        writeMerged(sheet, 13, 6, 15, "Кредит", tableHeader);
+        writeMerged(sheet, 13, 16, 20, "Сумма,", tableHeader);
+        writeMerged(sheet, 13, 21, 23, "Код", tableHeader);
+        writeMerged(sheet, 14, 6, 9, "код\nструктурного\nподразделения", tableHeader);
+        writeMerged(sheet, 14, 10, 13, "корр.счет,\nсубсчет", tableHeader);
+        writeMerged(sheet, 14, 14, 15, "код ан.\nучета", tableHeader);
+        writeMerged(sheet, 14, 16, 20, currency, tableHeader);
+        writeMerged(sheet, 14, 21, 23, "целевого\nназначения", tableHeader);
+        writeMerged(sheet, 15, 2, 5, "1110", tableLeft);
+        writeMerged(sheet, 15, 6, 9, "", tableLeft);
+        writeMerged(sheet, 15, 10, 13, "3210", tableLeft);
+        writeMerged(sheet, 15, 14, 15, "", tableLeft);
+        writeMerged(sheet, 15, 16, 20, amountLabel, tableBoldRight);
+        writeMerged(sheet, 15, 21, 23, "", tableLeft);
+
+        writeMerged(sheet, 17, 2, 5, "Принято от:", normal);
+        writeMerged(sheet, 17, 6, 23, counterparty, normal);
+        writeMerged(sheet, 18, 6, 23, "фамилия, имя, отчество", smallCenter);
+        writeMerged(sheet, 19, 2, 5, "Основание:", normal);
+        writeMerged(sheet, 19, 6, 23, basis, normal);
+        writeMerged(sheet, 21, 2, 5, "Сумма:", normal);
+        writeMerged(sheet, 21, 6, 23, amountWords, normal);
+        writeMerged(sheet, 22, 14, 23, "прописью", smallCenter);
+        writeMerged(sheet, 23, 2, 5, "В том числе:", normal);
+        writeMerged(sheet, 25, 2, 5, "Приложение:", normal);
+
+        writeMerged(sheet, 27, 2, 7, "Главный бухгалтер", bold);
+        writeMerged(sheet, 28, 8, 12, "подпись", smallCenter);
+        writeMerged(sheet, 28, 14, 23, "расшифровка подписи", smallCenter);
+        writeMerged(sheet, 30, 2, 7, "Получил кассир", bold);
+        writeMerged(sheet, 31, 8, 12, "подпись", smallCenter);
+        writeMerged(sheet, 31, 14, 23, "расшифровка подписи", smallCenter);
+        addBottomBorder(sheet, 28, 8, 12);
+        addBottomBorder(sheet, 28, 14, 23);
+        addBottomBorder(sheet, 31, 8, 12);
+        addBottomBorder(sheet, 31, 14, 23);
+
+        for (int row = 1; row <= 32; row++) {
+            addRightDashedBorder(sheet, row, 24);
+        }
+
+        writeMerged(sheet, 2, 25, 33, organization, receiptTitle);
+        writeMerged(sheet, 3, 29, 33, "организация", smallCenter);
+        writeMerged(sheet, 5, 27, 33, receiptTitleText, title);
+        writeMerged(sheet, 6, 27, 33, "к " + orderShortName + " № " + orderShortName + "-" + orderNumber, center);
+        writeMerged(sheet, 7, 27, 33, "от " + orderDate, tableBoldCenter);
+        writeMerged(sheet, 10, 25, 33, receiptIntro + counterparty, normal);
+        writeMerged(sheet, 13, 25, 33, "Основание:", normal);
+        writeMerged(sheet, 14, 25, 33, basis, normal);
+        writeMerged(sheet, 16, 25, 27, "Сумма:", normal);
+        writeMerged(sheet, 16, 28, 33, amountWords, bold);
+        writeMerged(sheet, 17, 25, 27, currency, normal);
+        writeMerged(sheet, 17, 28, 33, "цифрами: " + amountLabel, smallCenter);
+        writeMerged(sheet, 19, 25, 33, amountWords, normal);
+        writeMerged(sheet, 23, 25, 28, "М.П. (штамп)", bold);
+        writeMerged(sheet, 23, 29, 33, orderDate, bold);
+        writeMerged(sheet, 27, 25, 30, "Главный бухгалтер", bold);
+        writeMerged(sheet, 29, 25, 28, "подпись", smallCenter);
+        writeMerged(sheet, 29, 29, 33, "расшифровка подписи", smallCenter);
+        writeMerged(sheet, 30, 25, 30, "Кассир", bold);
+        writeMerged(sheet, 32, 25, 28, "подпись", smallCenter);
+        writeMerged(sheet, 32, 29, 33, "расшифровка подписи", smallCenter);
+        addBottomBorder(sheet, 29, 25, 28);
+        addBottomBorder(sheet, 29, 29, 33);
+        addBottomBorder(sheet, 32, 25, 28);
+        addBottomBorder(sheet, 32, 29, 33);
+
+        writeMerged(sheet, 34, 2, 23, "Объект: " + context + " | Статья: " + articleName + (counterpartyInn.isBlank() ? "" : " | ИНН: " + counterpartyInn), normal);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        workbook.write(out);
+        workbook.close();
+        return out.toByteArray();
     }
 
     public byte[] generateForm29(ReportData reportData, String format) throws Exception {
@@ -3917,6 +4167,14 @@ public class ReportService {
         return sanitizeFilename("Сводка по проектам " + formatIsoDate(header.get("report_date")) + "." + format);
     }
 
+    public String buildPaymentCashOrderFilename(ReportData reportData, String format) {
+        Map header = reportData.header();
+        String orderShortName = firstNonBlank(header.get("order_short_name"), "ПКО");
+        String orderNumber = firstNonBlank(header.get("order_number"), header.get("id"));
+        String projectName = stringValue(header.get("project_name"));
+        return sanitizeFilename(orderShortName + " №" + orderNumber + " " + projectName + "." + format);
+    }
+
     public String buildEstimateStageFilename(ReportData reportData, String format) {
         Map header = reportData.header();
         String projectName = stringValue(header.get("project_name"));
@@ -3961,6 +4219,131 @@ public class ReportService {
             sanitized = "Лист";
         }
         return sanitized.length() > 31 ? sanitized.substring(0, 31) : sanitized;
+    }
+
+    private CellStyle createCashOrderStyle(
+            XSSFWorkbook workbook,
+            boolean bold,
+            int fontSize,
+            HorizontalAlignment alignment,
+            BorderStyle borderStyle
+    ) {
+        CellStyle style = workbook.createCellStyle();
+        style.setAlignment(alignment);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setWrapText(true);
+        if (borderStyle != null && borderStyle != BorderStyle.NONE) {
+            style.setBorderTop(borderStyle);
+            style.setBorderRight(borderStyle);
+            style.setBorderBottom(borderStyle);
+            style.setBorderLeft(borderStyle);
+        }
+
+        Font font = workbook.createFont();
+        font.setFontName("Arial");
+        font.setFontHeightInPoints((short) fontSize);
+        font.setBold(bold);
+        style.setFont(font);
+        return style;
+    }
+
+    private void writeMerged(Sheet sheet, int rowIndex, int startCol, int endCol, String value, CellStyle style) {
+        Row row = sheet.getRow(rowIndex);
+        if (row == null) {
+            row = sheet.createRow(rowIndex);
+        }
+
+        for (int col = startCol; col <= endCol; col++) {
+            Cell cell = row.getCell(col);
+            if (cell == null) {
+                cell = row.createCell(col);
+            }
+            cell.setCellValue(col == startCol ? stringValue(value) : "");
+            cell.setCellStyle(style);
+        }
+
+        if (endCol > startCol) {
+            sheet.addMergedRegion(new CellRangeAddress(rowIndex, rowIndex, startCol, endCol));
+        }
+    }
+
+    private void setRowHeight(Sheet sheet, int rowIndex, int heightInPoints) {
+        Row row = sheet.getRow(rowIndex);
+        if (row == null) {
+            row = sheet.createRow(rowIndex);
+        }
+        row.setHeightInPoints(heightInPoints);
+    }
+
+    private void addBottomBorder(Sheet sheet, int rowIndex, int startCol, int endCol) {
+        CellRangeAddress region = new CellRangeAddress(rowIndex, rowIndex, startCol, endCol);
+        RegionUtil.setBorderBottom(BorderStyle.THIN, region, sheet);
+    }
+
+    private void addRightDashedBorder(Sheet sheet, int rowIndex, int col) {
+        CellRangeAddress region = new CellRangeAddress(rowIndex, rowIndex, col, col);
+        RegionUtil.setBorderRight(BorderStyle.DASHED, region, sheet);
+    }
+
+    private String cashOrderAmountToWords(double amount, String currency) {
+        if (!"KGS".equalsIgnoreCase(currency)) {
+            return formatSmartNumber(amount) + " " + currency;
+        }
+
+        BigDecimal rounded = BigDecimal.valueOf(amount).setScale(2, RoundingMode.HALF_UP);
+        long soms = rounded.longValue();
+        int tyiyn = rounded.remainder(BigDecimal.ONE).movePointRight(2).abs().intValue();
+        return capitalize(numberToWordsRu(soms)) + " сом " + String.format("%02d", tyiyn) + " тыйын";
+    }
+
+    private String numberToWordsRu(long value) {
+        if (value == 0) {
+            return "ноль";
+        }
+
+        StringBuilder result = new StringBuilder();
+        appendGroupRu(result, (int) (value / 1_000_000_000), "миллиард", "миллиарда", "миллиардов", false);
+        appendGroupRu(result, (int) ((value / 1_000_000) % 1000), "миллион", "миллиона", "миллионов", false);
+        appendGroupRu(result, (int) ((value / 1000) % 1000), "тысяча", "тысячи", "тысяч", true);
+        appendGroupRu(result, (int) (value % 1000), "", "", "", false);
+        return result.toString().trim().replaceAll("\\s+", " ");
+    }
+
+    private void appendGroupRu(
+            StringBuilder result,
+            int value,
+            String oneForm,
+            String twoForm,
+            String manyForm,
+            boolean feminine
+    ) {
+        if (value == 0) {
+            return;
+        }
+
+        String[] hundredsWords = {"", "сто", "двести", "триста", "четыреста", "пятьсот", "шестьсот", "семьсот", "восемьсот", "девятьсот"};
+        String[] tensWords = {"", "", "двадцать", "тридцать", "сорок", "пятьдесят", "шестьдесят", "семьдесят", "восемьдесят", "девяносто"};
+        String[] teensWords = {"десять", "одиннадцать", "двенадцать", "тринадцать", "четырнадцать", "пятнадцать", "шестнадцать", "семнадцать", "восемнадцать", "девятнадцать"};
+        String[] unitsMasculine = {"", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"};
+        String[] unitsFeminine = {"", "одна", "две", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"};
+
+        int hundreds = value / 100;
+        int tensUnits = value % 100;
+        int tens = tensUnits / 10;
+        int units = tensUnits % 10;
+
+        appendWord(result, hundredsWords[hundreds]);
+
+        if (tensUnits >= 10 && tensUnits <= 19) {
+            appendWord(result, teensWords[tensUnits - 10]);
+        } else {
+            appendWord(result, tensWords[tens]);
+            appendWord(result, feminine ? unitsFeminine[units] : unitsMasculine[units]);
+        }
+
+        if (!oneForm.isBlank()) {
+            appendWord(result, pluralForm(value, oneForm, twoForm, manyForm));
+        }
     }
 
     private String formatSignatureName(Object value) {
