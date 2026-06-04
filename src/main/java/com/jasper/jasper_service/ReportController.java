@@ -311,6 +311,58 @@ public class ReportController {
         }
     }
 
+    @GetMapping("/sales-summary")
+    public ResponseEntity<byte[]> generateSalesSummary(
+            @RequestParam(required = false) Integer projectId,
+            @RequestParam(required = false) String projectIds,
+            @RequestParam(required = false) Integer blockId,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        try {
+            ReportService.ReportData reportData = reportService.getSalesSummaryData(projectId, projectIds, blockId, dateFrom, dateTo, authorizationHeader);
+            byte[] file = reportService.generateSalesSummary(reportData);
+            String filename = reportService.buildSalesSummaryFilename(reportData);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("attachment", filename))
+                    .body(file);
+        } catch (Exception e) {
+            String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales summary generation failed" : e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
+                    .body(message.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    @GetMapping("/sales-payment-schedule")
+    public ResponseEntity<byte[]> generateSalesPaymentSchedule(
+            @RequestParam(required = false) Integer projectId,
+            @RequestParam(required = false) Integer blockId,
+            @RequestParam(required = false) Integer dealId,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        try {
+            ReportService.ReportData reportData = reportService.getSalesPaymentScheduleData(projectId, blockId, dealId, dateFrom, dateTo, authorizationHeader);
+            byte[] file = reportService.generateSalesPaymentSchedule(reportData);
+            String filename = reportService.buildSalesPaymentScheduleFilename(reportData);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("attachment", filename))
+                    .body(file);
+        } catch (Exception e) {
+            String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales payment schedule generation failed" : e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
+                    .body(message.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     @GetMapping("/schedule")
     public ResponseEntity<byte[]> generateSchedule(
             @RequestParam Integer projectId,

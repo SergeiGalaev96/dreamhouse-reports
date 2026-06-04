@@ -430,6 +430,98 @@ public class ReportService {
         return new ReportData(data, header);
     }
 
+    public ReportData getSalesSummaryData(
+            Integer projectId,
+            String projectIds,
+            Integer blockId,
+            String dateFrom,
+            String dateTo,
+            String authorizationHeader
+    ) {
+        String url = apiBaseUrl + "/api/reports/sales/summary";
+        Map<String, Object> payload = new HashMap<>();
+        if (projectId != null) {
+            payload.put("project_id", projectId);
+        }
+        if (projectIds != null && !projectIds.isBlank()) {
+            payload.put("project_ids", projectIds);
+        }
+        if (blockId != null) {
+            payload.put("block_id", blockId);
+        }
+        if (dateFrom != null && !dateFrom.isBlank()) {
+            payload.put("date_from", dateFrom);
+        }
+        if (dateTo != null && !dateTo.isBlank()) {
+            payload.put("date_to", dateTo);
+        }
+        return getReportDataByPost(url, payload, authorizationHeader, "Sales summary");
+    }
+
+    public ReportData getSalesPaymentScheduleData(
+            Integer projectId,
+            Integer blockId,
+            Integer dealId,
+            String dateFrom,
+            String dateTo,
+            String authorizationHeader
+    ) {
+        String url = apiBaseUrl + "/api/reports/sales/payment-schedule";
+        Map<String, Object> payload = new HashMap<>();
+        if (projectId != null) {
+            payload.put("project_id", projectId);
+        }
+        if (blockId != null) {
+            payload.put("block_id", blockId);
+        }
+        if (dealId != null) {
+            payload.put("deal_id", dealId);
+        }
+        if (dateFrom != null && !dateFrom.isBlank()) {
+            payload.put("date_from", dateFrom);
+        }
+        if (dateTo != null && !dateTo.isBlank()) {
+            payload.put("date_to", dateTo);
+        }
+        return getReportDataByPost(url, payload, authorizationHeader, "Sales payment schedule");
+    }
+
+    private ReportData getReportDataByPost(
+            String url,
+            Map<String, Object> payload,
+            String authorizationHeader,
+            String reportName
+    ) {
+        HttpHeaders headers = new HttpHeaders();
+        if (authorizationHeader != null && !authorizationHeader.isBlank()) {
+            headers.set(HttpHeaders.AUTHORIZATION, authorizationHeader);
+        }
+
+        ResponseEntity<Map> apiResponse = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class
+        );
+
+        Map response = apiResponse.getBody();
+        if (response == null || !Boolean.TRUE.equals(response.get("success"))) {
+            throw new IllegalStateException(reportName + " API returned an unsuccessful response");
+        }
+
+        Map data = (Map) response.get("data");
+        if (data == null) {
+            throw new IllegalStateException(reportName + " API response does not contain data");
+        }
+
+        Map header = (Map) data.get("header");
+        if (header == null) {
+            throw new IllegalStateException(reportName + " API response does not contain header");
+        }
+
+        return new ReportData(data, header);
+    }
+
     public byte[] generateWorkPerformed(String id, String format, String authorizationHeader) throws Exception {
         return generateWorkPerformed(getWorkPerformedData(id, authorizationHeader), id, format);
     }
@@ -4119,6 +4211,323 @@ public class ReportService {
         return html.getBytes(StandardCharsets.UTF_8);
     }
 
+    public byte[] generateSalesSummary(ReportData reportData) throws Exception {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> summaryRows = (List<Map<String, Object>>) data.getOrDefault("summary", List.of());
+        List<Map<String, Object>> salesRows = (List<Map<String, Object>>) data.getOrDefault("sales", List.of());
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle titleStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.NONE);
+            CellStyle metaStyle = createStyle(workbook, true, HorizontalAlignment.LEFT, null, BorderStyle.NONE);
+            CellStyle headerStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, IndexedColors.GREY_25_PERCENT, BorderStyle.THIN);
+            CellStyle textStyle = createStyle(workbook, false, HorizontalAlignment.LEFT, null, BorderStyle.THIN);
+            CellStyle centerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle integerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle decimalStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle moneyStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle totalStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, IndexedColors.LIGHT_YELLOW, BorderStyle.THIN);
+
+            decimalStyle.setDataFormat(workbook.createDataFormat().getFormat("0.###"));
+            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            totalStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+
+            Sheet salesSheet = workbook.createSheet("Продажи");
+            int rowIndex = 0;
+            rowIndex = writeMergedValue(salesSheet, rowIndex, 0, 22, "Сводка продаж", titleStyle);
+            rowIndex = writeMergedValue(salesSheet, rowIndex, 0, 22, salesReportFilterLabel(header), metaStyle);
+            rowIndex++;
+
+            String[] salesColumns = {
+                    "Тип записи", "Дата", "Менеджер", "Объект", "Блок", "Этаж", "Квартира", "Код квартиры",
+                    "Тип лота", "Комнат", "Площадь, м2", "Клиент", "Телефон", "Тип сделки",
+                    "Статус договора", "№ договора", "Дата договора", "Стоимость", "Скидка",
+                    "Сумма сделки", "Валюта", "Оплачено", "Остаток"
+            };
+            Row salesHeader = salesSheet.createRow(rowIndex++);
+            for (int i = 0; i < salesColumns.length; i++) {
+                writeCell(salesHeader, i, salesColumns[i], headerStyle);
+            }
+
+            double totalSales = 0;
+            double totalPaid = 0;
+            double totalDebt = 0;
+
+            for (Map<String, Object> row : salesRows) {
+                Row excelRow = salesSheet.createRow(rowIndex++);
+                writeCell(excelRow, 0, stringValue(row.get("record_type")), centerStyle);
+                writeCell(excelRow, 1, formatIsoDate(row.get("sale_date")), centerStyle);
+                writeCell(excelRow, 2, firstNonBlank(row.get("manager_name"), row.get("manager_username")), textStyle);
+                writeCell(excelRow, 3, stringValue(row.get("project_name")), textStyle);
+                writeCell(excelRow, 4, stringValue(row.get("block_name")), textStyle);
+                writeCell(excelRow, 5, salesFloorLabel(row), centerStyle);
+                writeCell(excelRow, 6, "№" + stringValue(row.get("unit_number")), centerStyle);
+                writeCell(excelRow, 7, stringValue(row.get("plan_code")), centerStyle);
+                writeCell(excelRow, 8, salesLotTypeLabel(row.get("lot_type")), centerStyle);
+                writeNumericCell(excelRow, 9, toDouble(row.get("rooms")), integerStyle);
+                writeSmartNumericCell(excelRow, 10, toDouble(row.get("area_total")), integerStyle, decimalStyle);
+                writeCell(excelRow, 11, stringValue(row.get("client_name")), textStyle);
+                writeCell(excelRow, 12, stringValue(row.get("client_phone")), centerStyle);
+                writeCell(excelRow, 13, stringValue(row.get("deal_type_name")), centerStyle);
+                writeCell(excelRow, 14, stringValue(row.get("deal_status_name")), centerStyle);
+                writeCell(excelRow, 15, firstNonBlank(row.get("contract_number"), firstNonBlank(row.get("deal_number"), row.get("deal_id"))), centerStyle);
+                writeCell(excelRow, 16, formatIsoDate(row.get("contract_date")), centerStyle);
+                writeNumericCell(excelRow, 17, toDouble(row.get("total_amount")), moneyStyle);
+                writeNumericCell(excelRow, 18, toDouble(row.get("discount_amount")), moneyStyle);
+                writeNumericCell(excelRow, 19, toDouble(firstNonBlank(row.get("final_amount"), firstNonBlank(row.get("total_amount"), row.get("unit_price")))), moneyStyle);
+                writeCell(excelRow, 20, firstNonBlank(row.get("currency_code"), "KGS"), centerStyle);
+                writeNumericCell(excelRow, 21, toDouble(row.get("paid_amount")), moneyStyle);
+                writeNumericCell(excelRow, 22, toDouble(row.get("debt_amount")), moneyStyle);
+
+                totalSales += toDouble(firstNonBlank(row.get("final_amount"), firstNonBlank(row.get("total_amount"), row.get("unit_price"))));
+                totalPaid += toDouble(row.get("paid_amount"));
+                totalDebt += toDouble(row.get("debt_amount"));
+            }
+
+            Row totalRow = salesSheet.createRow(rowIndex);
+            writeCell(totalRow, 0, "Итого", totalStyle);
+            for (int i = 1; i < 19; i++) {
+                writeCell(totalRow, i, "", totalStyle);
+            }
+            writeNumericCell(totalRow, 19, totalSales, totalStyle);
+            writeCell(totalRow, 20, "", totalStyle);
+            writeNumericCell(totalRow, 21, totalPaid, totalStyle);
+            writeNumericCell(totalRow, 22, totalDebt, totalStyle);
+
+            Sheet summarySheet = workbook.createSheet("Итого менеджеры");
+            rowIndex = 0;
+            rowIndex = writeMergedValue(summarySheet, rowIndex, 0, 6, "Итого по менеджерам", titleStyle);
+            rowIndex = writeMergedValue(summarySheet, rowIndex, 0, 6, salesReportFilterLabel(header), metaStyle);
+            rowIndex++;
+
+            String[] summaryColumns = {
+                    "Менеджер", "Продаж", "Броней", "Площадь, м2", "Сумма сделок", "Оплачено", "Остаток"
+            };
+            Row summaryHeader = summarySheet.createRow(rowIndex++);
+            for (int i = 0; i < summaryColumns.length; i++) {
+                writeCell(summaryHeader, i, summaryColumns[i], headerStyle);
+            }
+
+            double totalUnits = 0;
+            double totalReservations = 0;
+            double totalArea = 0;
+            double totalManagerSales = 0;
+            double totalManagerPaid = 0;
+            double totalManagerDebt = 0;
+
+            for (Map<String, Object> row : summaryRows) {
+                Row excelRow = summarySheet.createRow(rowIndex++);
+                writeCell(excelRow, 0, stringValue(row.get("manager_name")), textStyle);
+                writeNumericCell(excelRow, 1, toDouble(row.get("sold_units")), integerStyle);
+                writeNumericCell(excelRow, 2, toDouble(row.get("reserved_units")), integerStyle);
+                writeSmartNumericCell(excelRow, 3, toDouble(row.get("total_area")), integerStyle, decimalStyle);
+                writeNumericCell(excelRow, 4, toDouble(row.get("total_amount")), moneyStyle);
+                writeNumericCell(excelRow, 5, toDouble(row.get("paid_amount")), moneyStyle);
+                writeNumericCell(excelRow, 6, toDouble(row.get("debt_amount")), moneyStyle);
+
+                totalUnits += toDouble(row.get("sold_units"));
+                totalReservations += toDouble(row.get("reserved_units"));
+                totalArea += toDouble(row.get("total_area"));
+                totalManagerSales += toDouble(row.get("total_amount"));
+                totalManagerPaid += toDouble(row.get("paid_amount"));
+                totalManagerDebt += toDouble(row.get("debt_amount"));
+            }
+
+            Row summaryTotalRow = summarySheet.createRow(rowIndex);
+            writeCell(summaryTotalRow, 0, "Итого", totalStyle);
+            writeNumericCell(summaryTotalRow, 1, totalUnits, totalStyle);
+            writeNumericCell(summaryTotalRow, 2, totalReservations, totalStyle);
+            writeSmartNumericCell(summaryTotalRow, 3, totalArea, totalStyle, totalStyle);
+            writeNumericCell(summaryTotalRow, 4, totalManagerSales, totalStyle);
+            writeNumericCell(summaryTotalRow, 5, totalManagerPaid, totalStyle);
+            writeNumericCell(summaryTotalRow, 6, totalManagerDebt, totalStyle);
+
+            autosizeColumns(salesSheet, salesColumns.length);
+            autosizeColumns(summarySheet, summaryColumns.length);
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    public byte[] generateSalesPaymentSchedule(ReportData reportData) throws Exception {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle titleStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.NONE);
+            CellStyle metaStyle = createStyle(workbook, true, HorizontalAlignment.LEFT, null, BorderStyle.NONE);
+            CellStyle headerStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, IndexedColors.GREY_25_PERCENT, BorderStyle.THIN);
+            CellStyle textStyle = createStyle(workbook, false, HorizontalAlignment.LEFT, null, BorderStyle.THIN);
+            CellStyle centerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle integerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle moneyStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle overdueStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, IndexedColors.ROSE, BorderStyle.THIN);
+            CellStyle paidStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, IndexedColors.LIGHT_GREEN, BorderStyle.THIN);
+            CellStyle partialStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, IndexedColors.LIGHT_YELLOW, BorderStyle.THIN);
+            CellStyle totalStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, IndexedColors.LIGHT_YELLOW, BorderStyle.THIN);
+
+            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            overdueStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            paidStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            partialStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+            totalStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+
+            Sheet sheet = workbook.createSheet("График платежей");
+            int rowIndex = 0;
+            String contractTitle = firstNonBlank(header.get("contract_number"), header.get("deal_number"));
+            rowIndex = writeMergedValue(
+                    sheet,
+                    rowIndex,
+                    0,
+                    15,
+                    contractTitle.isBlank() ? "График платежей отдела продаж" : "График платежей по договору №" + contractTitle,
+                    titleStyle
+            );
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, 15, salesReportFilterLabel(header), metaStyle);
+            rowIndex++;
+
+            String[] columns = {
+                    "Объект", "Блок", "Этаж", "Лот", "Код", "Клиент", "Телефон", "Договор",
+                    "№ платежа", "Плановая дата", "План", "Оплачено", "Остаток", "Статус",
+                    "Просрочка, дней", "Связанные платежи"
+            };
+            Row headerRow = sheet.createRow(rowIndex++);
+            for (int i = 0; i < columns.length; i++) {
+                writeCell(headerRow, i, columns[i], headerStyle);
+            }
+
+            for (Map<String, Object> row : rows) {
+                String statusCode = stringValue(row.get("status_code"));
+                CellStyle statusStyle = switch (statusCode) {
+                    case "paid_on_time", "paid_late" -> paidStyle;
+                    case "partial" -> partialStyle;
+                    case "overdue" -> overdueStyle;
+                    default -> centerStyle;
+                };
+
+                Row excelRow = sheet.createRow(rowIndex++);
+                writeCell(excelRow, 0, stringValue(row.get("project_name")), textStyle);
+                writeCell(excelRow, 1, stringValue(row.get("block_name")), textStyle);
+                writeCell(excelRow, 2, salesFloorLabel(row), centerStyle);
+                writeCell(excelRow, 3, "№" + stringValue(row.get("unit_number")), centerStyle);
+                writeCell(excelRow, 4, stringValue(row.get("plan_code")), centerStyle);
+                writeCell(excelRow, 5, stringValue(row.get("client_name")), textStyle);
+                writeCell(excelRow, 6, stringValue(row.get("client_phone")), centerStyle);
+                writeCell(excelRow, 7, firstNonBlank(row.get("contract_number"), firstNonBlank(row.get("deal_number"), row.get("deal_id"))), centerStyle);
+                writeNumericCell(excelRow, 8, toDouble(row.get("payment_no")), integerStyle);
+                writeCell(excelRow, 9, formatIsoDate(row.get("planned_date")), centerStyle);
+                writeNumericCell(excelRow, 10, toDouble(row.get("planned_amount")), moneyStyle);
+                writeNumericCell(excelRow, 11, toDouble(row.get("paid_amount")), moneyStyle);
+                writeNumericCell(excelRow, 12, toDouble(row.get("remaining_amount")), moneyStyle);
+                writeCell(excelRow, 13, stringValue(row.get("status_name")), statusStyle);
+                writeNumericCell(excelRow, 14, toDouble(row.get("overdue_days")), statusStyle);
+                writeCell(excelRow, 15, stringValue(row.get("linked_payments")), textStyle);
+            }
+
+            Row totalRow = sheet.createRow(rowIndex);
+            writeCell(totalRow, 0, "Итого", totalStyle);
+            for (int i = 1; i < 10; i++) {
+                writeCell(totalRow, i, "", totalStyle);
+            }
+            writeNumericCell(totalRow, 10, toDouble(header.get("total_planned")), totalStyle);
+            writeNumericCell(totalRow, 11, toDouble(header.get("total_paid")), totalStyle);
+            writeNumericCell(totalRow, 12, toDouble(header.get("total_remaining")), totalStyle);
+            for (int i = 13; i < columns.length; i++) {
+                writeCell(totalRow, i, "", totalStyle);
+            }
+
+            autosizeColumns(sheet, columns.length);
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void writeSalesUnitsSheet(
+            Sheet sheet,
+            CellStyle headerStyle,
+            CellStyle textStyle,
+            CellStyle centerStyle,
+            CellStyle integerStyle,
+            CellStyle decimalStyle,
+            CellStyle moneyStyle,
+            List<Map<String, Object>> rows
+    ) {
+        String[] columns = {
+                "Объект", "Блок", "Этаж", "Лот", "Код", "Тип", "Комнат", "Площадь",
+                "Статус", "Стоимость", "Валюта", "Поступило", "Долг", "Создан"
+        };
+        Row headerRow = sheet.createRow(0);
+        for (int i = 0; i < columns.length; i++) {
+            writeCell(headerRow, i, columns[i], headerStyle);
+        }
+
+        int rowIndex = 1;
+        for (Map<String, Object> row : rows) {
+            Row excelRow = sheet.createRow(rowIndex++);
+            writeCell(excelRow, 0, stringValue(row.get("project_name")), textStyle);
+            writeCell(excelRow, 1, stringValue(row.get("block_name")), textStyle);
+            writeCell(excelRow, 2, salesFloorLabel(row), centerStyle);
+            writeCell(excelRow, 3, "№" + stringValue(row.get("unit_number")), centerStyle);
+            writeCell(excelRow, 4, stringValue(row.get("plan_code")), centerStyle);
+            writeCell(excelRow, 5, salesLotTypeLabel(row.get("lot_type")), centerStyle);
+            writeNumericCell(excelRow, 6, toDouble(row.get("rooms")), integerStyle);
+            writeSmartNumericCell(excelRow, 7, toDouble(row.get("area_total")), integerStyle, decimalStyle);
+            writeCell(excelRow, 8, stringValue(row.get("status_name")), centerStyle);
+            writeNumericCell(excelRow, 9, toDouble(row.get("price_total")), moneyStyle);
+            writeCell(excelRow, 10, firstNonBlank(row.get("currency_code"), "KGS"), centerStyle);
+            writeNumericCell(excelRow, 11, toDouble(row.get("paid_amount")), moneyStyle);
+            writeNumericCell(excelRow, 12, toDouble(row.get("debt_amount")), moneyStyle);
+            writeCell(excelRow, 13, formatIsoDate(row.get("created_at")), centerStyle);
+        }
+    }
+
+    private String salesReportFilterLabel(Map header) {
+        String project = stringValue(header.get("project_name"));
+        String block = stringValue(header.get("block_name"));
+        String contract = firstNonBlank(header.get("contract_number"), header.get("deal_number"));
+        String unitNumber = stringValue(header.get("unit_number"));
+        String client = stringValue(header.get("client_name"));
+        String dateFrom = formatIsoDate(header.get("date_from"));
+        String dateTo = formatIsoDate(header.get("date_to"));
+        List<String> parts = new ArrayList<>();
+        if (!project.isBlank()) parts.add("Объект: " + project);
+        if (!block.isBlank()) parts.add("Блок: " + block);
+        if (!unitNumber.isBlank()) parts.add("Лот: №" + unitNumber);
+        if (!contract.isBlank()) parts.add("Договор: №" + contract);
+        if (!client.isBlank()) parts.add("Клиент: " + client);
+        if (!dateFrom.isBlank() || !dateTo.isBlank()) parts.add("Период: " + firstNonBlank(dateFrom, "...") + " - " + firstNonBlank(dateTo, "..."));
+        parts.add("Сформировано: " + formatIsoDate(header.get("generated_at")));
+        return String.join(" | ", parts);
+    }
+
+    private String salesFloorLabel(Map<String, Object> row) {
+        String name = stringValue(row.get("floor_name"));
+        if (!name.isBlank()) {
+            return name;
+        }
+        String number = stringValue(row.get("floor_number"));
+        return number.isBlank() ? "" : number + " этаж";
+    }
+
+    private String salesLotTypeLabel(Object value) {
+        return switch (stringValue(value)) {
+            case "apartment" -> "Квартира";
+            case "commercial" -> "Помещение";
+            case "parking" -> "Паркинг";
+            case "storage" -> "Кладовая";
+            default -> stringValue(value);
+        };
+    }
+
+    private void autosizeColumns(Sheet sheet, int columns) {
+        for (int i = 0; i < columns; i++) {
+            sheet.autoSizeColumn(i);
+            int width = sheet.getColumnWidth(i);
+            sheet.setColumnWidth(i, Math.min(Math.max(width + 700, 3200), 12000));
+        }
+    }
+
     public String buildWorkPerformedFilename(String id, String format, String authorizationHeader) {
         return buildWorkPerformedFilename(getWorkPerformedData(id, authorizationHeader), id, format);
     }
@@ -4173,6 +4582,25 @@ public class ReportService {
         String orderNumber = firstNonBlank(header.get("order_number"), header.get("id"));
         String projectName = stringValue(header.get("project_name"));
         return sanitizeFilename(orderShortName + " №" + orderNumber + " " + projectName + "." + format);
+    }
+
+    public String buildSalesSummaryFilename(ReportData reportData) {
+        Map header = reportData.header();
+        String projectName = firstNonBlank(header.get("project_name"), "Все объекты");
+        String blockName = stringValue(header.get("block_name"));
+        return sanitizeFilename("Сводка продаж " + projectName + " " + blockName + ".xlsx");
+    }
+
+    public String buildSalesPaymentScheduleFilename(ReportData reportData) {
+        Map header = reportData.header();
+        String projectName = firstNonBlank(header.get("project_name"), "Все объекты");
+        String blockName = stringValue(header.get("block_name"));
+        String contract = firstNonBlank(header.get("contract_number"), header.get("deal_number"));
+        String unitNumber = stringValue(header.get("unit_number"));
+        if (!contract.isBlank()) {
+            return sanitizeFilename("График платежей договор №" + contract + " лот №" + unitNumber + ".xlsx");
+        }
+        return sanitizeFilename("График платежей продаж " + projectName + " " + blockName + ".xlsx");
     }
 
     public String buildEstimateStageFilename(ReportData reportData, String format) {
