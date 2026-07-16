@@ -430,6 +430,30 @@ public class ReportService {
         return new ReportData(data, header);
     }
 
+    public ReportData getPaymentsCashBookData(
+            Integer projectId,
+            Integer blockId,
+            String dateFrom,
+            String dateTo,
+            String authorizationHeader
+    ) {
+        String url = apiBaseUrl + "/api/reports/payments/cash-book";
+        Map<String, Object> payload = new HashMap<>();
+        if (projectId != null) {
+            payload.put("project_id", projectId);
+        }
+        if (blockId != null) {
+            payload.put("block_id", blockId);
+        }
+        if (dateFrom != null && !dateFrom.isBlank()) {
+            payload.put("date_from", dateFrom);
+        }
+        if (dateTo != null && !dateTo.isBlank()) {
+            payload.put("date_to", dateTo);
+        }
+        return getReportDataByPost(url, payload, authorizationHeader, "Payments cash book");
+    }
+
     public ReportData getSalesSummaryData(
             Integer projectId,
             String projectIds,
@@ -484,6 +508,20 @@ public class ReportService {
             payload.put("date_to", dateTo);
         }
         return getReportDataByPost(url, payload, authorizationHeader, "Sales payment schedule");
+    }
+
+    public ReportData getSalesMonthlyPlanData(
+            Integer projectId,
+            Integer blockId,
+            String authorizationHeader
+    ) {
+        String url = apiBaseUrl + "/api/reports/sales/monthly-plan";
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("project_id", projectId);
+        if (blockId != null) {
+            payload.put("block_id", blockId);
+        }
+        return getReportDataByPost(url, payload, authorizationHeader, "Sales monthly plan");
     }
 
     private ReportData getReportDataByPost(
@@ -4349,6 +4387,240 @@ public class ReportService {
         }
     }
 
+    public byte[] generatePaymentsCashBook(ReportData reportData) throws Exception {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle titleStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.NONE);
+            CellStyle subtitleStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.NONE);
+            CellStyle metaStyle = createStyle(workbook, false, HorizontalAlignment.LEFT, null, BorderStyle.NONE);
+            CellStyle headerStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle textStyle = createStyle(workbook, false, HorizontalAlignment.LEFT, null, BorderStyle.THIN);
+            CellStyle centerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle moneyStyle = createStyle(workbook, false, HorizontalAlignment.RIGHT, null, BorderStyle.THIN);
+            CellStyle totalLabelStyle = createStyle(workbook, true, HorizontalAlignment.RIGHT, IndexedColors.GREY_25_PERCENT, BorderStyle.THIN);
+            CellStyle totalMoneyStyle = createStyle(workbook, true, HorizontalAlignment.RIGHT, IndexedColors.GREY_25_PERCENT, BorderStyle.THIN);
+
+            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+            totalMoneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+
+            Sheet sheet = workbook.createSheet("Кассовая книга");
+            sheet.setDisplayGridlines(true);
+
+            sheet.setColumnWidth(0, 10000);
+            sheet.setColumnWidth(1, 10000);
+            sheet.setColumnWidth(2, 10500);
+            sheet.setColumnWidth(3, 4200);
+            sheet.setColumnWidth(4, 4200);
+
+            int rowIndex = 1;
+            String dateFrom = formatIsoDate(header.get("date_from"));
+            String dateTo = formatIsoDate(header.get("date_to"));
+            String periodLabel = firstNonBlank(dateFrom, "...") + " по " + firstNonBlank(dateTo, "...");
+            double openingBalance = toDouble(header.get("opening_balance"));
+            double closingBalance = toDouble(header.get("closing_balance"));
+
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, 4, "КАССА за период с " + periodLabel, titleStyle);
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, 4, "Вкладной лист кассовой книги", subtitleStyle);
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, 4, paymentsCashBookFilterLabel(header), metaStyle);
+
+            Row openingSummaryRow = sheet.createRow(rowIndex++);
+            writeCell(openingSummaryRow, 0, "Остаток на начало", totalLabelStyle);
+            writeCell(openingSummaryRow, 1, "", totalLabelStyle);
+            writeCell(openingSummaryRow, 2, "", totalLabelStyle);
+            writeNumericCell(openingSummaryRow, 3, openingBalance, totalMoneyStyle);
+            writeCell(openingSummaryRow, 4, "KGS", totalLabelStyle);
+            mergeCellsIfNeeded(sheet, openingSummaryRow.getRowNum(), 0, 2);
+
+            Row closingSummaryRow = sheet.createRow(rowIndex++);
+            writeCell(closingSummaryRow, 0, "Остаток на конец", totalLabelStyle);
+            writeCell(closingSummaryRow, 1, "", totalLabelStyle);
+            writeCell(closingSummaryRow, 2, "", totalLabelStyle);
+            writeNumericCell(closingSummaryRow, 3, closingBalance, totalMoneyStyle);
+            writeCell(closingSummaryRow, 4, "KGS", totalLabelStyle);
+            mergeCellsIfNeeded(sheet, closingSummaryRow.getRowNum(), 0, 2);
+
+            rowIndex++;
+
+            String[] columns = {
+                    "Номер документа",
+                    "От кого получено или кому выдано",
+                    "Данные платежа",
+                    "Приход (KGS)",
+                    "Расход (KGS)"
+            };
+            Row headerRow = sheet.createRow(rowIndex++);
+            headerRow.setHeightInPoints(42);
+            for (int i = 0; i < columns.length; i++) {
+                writeCell(headerRow, i, columns[i], headerStyle);
+            }
+
+            Row numberRow = sheet.createRow(rowIndex++);
+            for (int i = 0; i < columns.length; i++) {
+                writeNumericCell(numberRow, i, i + 1, centerStyle);
+            }
+
+            for (Map<String, Object> row : rows) {
+                Row excelRow = sheet.createRow(rowIndex++);
+                String paymentTypeCode = stringValue(row.get("payment_type_code"));
+                boolean isIncome = "income".equals(paymentTypeCode);
+                String orderName = isIncome ? "Приходный кассовый ордер" : "Расходный кассовый ордер";
+                String documentNumber = firstNonBlank(row.get("document_number"), firstNonBlank(row.get("external_number"), row.get("id")));
+                String operationDate = formatIsoDate(row.get("operation_date"));
+                String documentLabel = orderName + " № " + documentNumber + (operationDate.isBlank() ? "" : " от " + operationDate);
+                String counterparty = firstNonBlank(row.get("counterparty_name"), firstNonBlank(row.get("article_name"), row.get("title")));
+                String paymentDetails = paymentsCashBookDetails(row);
+
+                writeCell(excelRow, 0, documentLabel, textStyle);
+                writeCell(excelRow, 1, counterparty, textStyle);
+                writeCell(excelRow, 2, paymentDetails, textStyle);
+                writeNumericCell(excelRow, 3, toDouble(row.get("income_kgs")), moneyStyle);
+                writeNumericCell(excelRow, 4, toDouble(row.get("expense_kgs")), moneyStyle);
+            }
+
+            Row totalRow = sheet.createRow(rowIndex++);
+            writeCell(totalRow, 0, "", totalLabelStyle);
+            writeCell(totalRow, 1, "Итого за период", totalLabelStyle);
+            writeCell(totalRow, 2, "", totalLabelStyle);
+            writeNumericCell(totalRow, 3, toDouble(header.get("total_income")), totalMoneyStyle);
+            writeNumericCell(totalRow, 4, toDouble(header.get("total_expense")), totalMoneyStyle);
+
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    public byte[] generatePaymentsCashBook(ReportData reportData, String format) throws Exception {
+        if ("html".equalsIgnoreCase(format)) {
+            return generatePaymentsCashBookHtml(reportData);
+        }
+
+        return generatePaymentsCashBook(reportData);
+    }
+
+    private byte[] generatePaymentsCashBookHtml(ReportData reportData) {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+
+        String dateFrom = formatIsoDate(header.get("date_from"));
+        String dateTo = formatIsoDate(header.get("date_to"));
+        String periodLabel = firstNonBlank(dateFrom, "...") + " по " + firstNonBlank(dateTo, "...");
+        double openingBalance = toDouble(header.get("opening_balance"));
+        double closingBalance = toDouble(header.get("closing_balance"));
+
+        StringBuilder html = new StringBuilder();
+        html.append("""
+                <!doctype html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    html, body { margin: 0; padding: 0; background: #f8fafc; color: #0f172a; font-family: Arial, sans-serif; }
+                    .wrap { padding: 18px; min-width: 980px; box-sizing: border-box; }
+                    .page { background: #fff; border: 1px solid #cbd5e1; box-shadow: 0 8px 24px rgba(15,23,42,.08); }
+                    .title { text-align: center; font-size: 18px; font-weight: 700; padding: 12px 10px 2px; }
+                    .subtitle { text-align: center; font-size: 13px; font-weight: 700; padding-bottom: 8px; }
+                    .meta { border-top: 1px solid #0f172a; border-bottom: 1px solid #0f172a; padding: 6px 10px; font-size: 13px; }
+                    .balances { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+                    .balance { border: 1px solid #94a3b8; background: #f1f5f9; padding: 8px 10px; display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
+                    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+                    th, td { border: 1px solid #0f172a; padding: 6px 7px; vertical-align: middle; }
+                    th { text-align: center; font-weight: 700; background: #f8fafc; }
+                    .num { text-align: right; white-space: nowrap; }
+                    .center { text-align: center; }
+                    .total td { background: #d9d9d9; font-weight: 700; }
+                    .muted { color: #64748b; }
+                    .doc { width: 30%; }
+                    .party { width: 27%; }
+                    .details { width: 22%; }
+                    .money { width: 10.5%; }
+                  </style>
+                </head>
+                <body>
+                <div class="wrap">
+                  <div class="page">
+                """);
+
+        html.append("<div class=\"title\">КАССА за период с ")
+                .append(escapeHtml(periodLabel))
+                .append("</div>");
+        html.append("<div class=\"subtitle\">Вкладной лист кассовой книги</div>");
+        html.append("<div class=\"meta\">")
+                .append(escapeHtml(paymentsCashBookFilterLabel(header)))
+                .append("</div>");
+        html.append("<div class=\"balances\">")
+                .append("<div class=\"balance\"><span>Остаток на начало</span><span>")
+                .append(escapeHtml(formatMoneyForHtml(openingBalance)))
+                .append(" KGS</span></div>")
+                .append("<div class=\"balance\"><span>Остаток на конец</span><span>")
+                .append(escapeHtml(formatMoneyForHtml(closingBalance)))
+                .append(" KGS</span></div>")
+                .append("</div>");
+
+        html.append("""
+                    <table>
+                      <thead>
+                        <tr>
+                          <th class="doc">Номер документа</th>
+                          <th class="party">От кого получено или кому выдано</th>
+                          <th class="details">Данные платежа</th>
+                          <th class="money">Приход (KGS)</th>
+                          <th class="money">Расход (KGS)</th>
+                        </tr>
+                        <tr class="muted">
+                          <th>1</th>
+                          <th>2</th>
+                          <th>3</th>
+                          <th>4</th>
+                          <th>5</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                """);
+
+        for (Map<String, Object> row : rows) {
+            String paymentTypeCode = stringValue(row.get("payment_type_code"));
+            boolean isIncome = "income".equals(paymentTypeCode);
+            String orderName = isIncome ? "Приходный кассовый ордер" : "Расходный кассовый ордер";
+            String documentNumber = firstNonBlank(row.get("document_number"), firstNonBlank(row.get("external_number"), row.get("id")));
+            String operationDate = formatIsoDate(row.get("operation_date"));
+            String documentLabel = orderName + " № " + documentNumber + (operationDate.isBlank() ? "" : " от " + operationDate);
+            String counterparty = firstNonBlank(row.get("counterparty_name"), firstNonBlank(row.get("article_name"), row.get("title")));
+            String paymentDetails = paymentsCashBookDetails(row);
+
+            html.append("<tr>")
+                    .append("<td>").append(escapeHtml(documentLabel)).append("</td>")
+                    .append("<td>").append(escapeHtml(counterparty)).append("</td>")
+                    .append("<td>").append(escapeHtml(paymentDetails)).append("</td>")
+                    .append("<td class=\"num\">").append(escapeHtml(formatMoneyForHtml(toDouble(row.get("income_kgs"))))).append("</td>")
+                    .append("<td class=\"num\">").append(escapeHtml(formatMoneyForHtml(toDouble(row.get("expense_kgs"))))).append("</td>")
+                    .append("</tr>");
+        }
+
+        html.append("<tr class=\"total\">")
+                .append("<td colspan=\"3\">Итого за период</td>")
+                .append("<td class=\"num\">").append(escapeHtml(formatMoneyForHtml(toDouble(header.get("total_income"))))).append("</td>")
+                .append("<td class=\"num\">").append(escapeHtml(formatMoneyForHtml(toDouble(header.get("total_expense"))))).append("</td>")
+                .append("</tr>");
+        html.append("""
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                </body>
+                </html>
+                """);
+
+        return html.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String formatMoneyForHtml(double value) {
+        return String.format(Locale.US, "%,.2f", value).replace(",", " ").replace(".", ",");
+    }
+
     public byte[] generateSalesPaymentSchedule(ReportData reportData) throws Exception {
         Map data = reportData.data();
         Map header = reportData.header();
@@ -4443,6 +4715,153 @@ public class ReportService {
         }
     }
 
+    public byte[] generateSalesMonthlyPlan(ReportData reportData, String format) throws Exception {
+        if ("html".equalsIgnoreCase(format)) {
+            return generateSalesMonthlyPlanHtml(reportData);
+        }
+
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle titleStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, null, BorderStyle.NONE);
+            CellStyle metaStyle = createStyle(workbook, true, HorizontalAlignment.LEFT, null, BorderStyle.NONE);
+            CellStyle headerStyle = createStyle(workbook, true, HorizontalAlignment.CENTER, IndexedColors.GREY_25_PERCENT, BorderStyle.THIN);
+            CellStyle centerStyle = createStyle(workbook, false, HorizontalAlignment.CENTER, null, BorderStyle.THIN);
+            CellStyle decimalStyle = createStyle(workbook, false, HorizontalAlignment.RIGHT, null, BorderStyle.THIN);
+            CellStyle moneyStyle = createStyle(workbook, false, HorizontalAlignment.RIGHT, null, BorderStyle.THIN);
+            CellStyle kgsMoneyStyle = createStyle(workbook, false, HorizontalAlignment.RIGHT, null, BorderStyle.THIN);
+            CellStyle totalStyle = createStyle(workbook, true, HorizontalAlignment.RIGHT, IndexedColors.LIGHT_YELLOW, BorderStyle.THIN);
+            CellStyle totalMoneyStyle = createStyle(workbook, true, HorizontalAlignment.RIGHT, IndexedColors.LIGHT_YELLOW, BorderStyle.THIN);
+            CellStyle totalKgsMoneyStyle = createStyle(workbook, true, HorizontalAlignment.RIGHT, IndexedColors.LIGHT_YELLOW, BorderStyle.THIN);
+
+            decimalStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.###"));
+            moneyStyle.setDataFormat(workbook.createDataFormat().getFormat("$#,##0.00"));
+            kgsMoneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+            totalMoneyStyle.setDataFormat(workbook.createDataFormat().getFormat("$#,##0.00"));
+            totalKgsMoneyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+
+            Sheet sheet = workbook.createSheet("График продаж");
+            int rowIndex = 0;
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, 8, "ПОМЕСЯЧНЫЙ ГРАФИК ПРОДАЖ", titleStyle);
+            String scope = "Объект: " + stringValue(header.get("project_name"));
+            if (!stringValue(header.get("block_name")).isBlank()) {
+                scope += " | Блок: " + stringValue(header.get("block_name"));
+            }
+            scope += " | Период: " + stringValue(header.get("date_from")) + " - " + stringValue(header.get("date_to")) + " | Валюты: USD / KGS";
+            rowIndex = writeMergedValue(sheet, rowIndex, 0, 8, scope, metaStyle);
+            rowIndex++;
+
+            Row groupHeaderRow = sheet.createRow(rowIndex++);
+            Row valueHeaderRow = sheet.createRow(rowIndex++);
+            writeCell(groupHeaderRow, 0, "Месяц", headerStyle);
+            writeCell(valueHeaderRow, 0, "", headerStyle);
+            mergeCellsIfNeeded(sheet, groupHeaderRow.getRowNum(), 0, valueHeaderRow.getRowNum(), 0);
+
+            String[] groups = {"Лоты", "м²", "Поступления USD", "Поступления KGS"};
+            for (int groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+                int firstColumn = 1 + groupIndex * 2;
+                writeCell(groupHeaderRow, firstColumn, groups[groupIndex], headerStyle);
+                writeCell(groupHeaderRow, firstColumn + 1, "", headerStyle);
+                mergeCellsIfNeeded(sheet, groupHeaderRow.getRowNum(), firstColumn, firstColumn + 1);
+                writeCell(valueHeaderRow, firstColumn, "Потребность", headerStyle);
+                writeCell(valueHeaderRow, firstColumn + 1, "Факт", headerStyle);
+            }
+
+            for (Map<String, Object> row : rows) {
+                Row excelRow = sheet.createRow(rowIndex++);
+                writeCell(excelRow, 0, stringValue(row.get("month_name")), centerStyle);
+                writeNumericCell(excelRow, 1, toDouble(row.get("planned_units")), centerStyle);
+                writeNumericCell(excelRow, 2, toDouble(row.get("actual_units")), centerStyle);
+                writeNumericCell(excelRow, 3, toDouble(row.get("planned_area")), decimalStyle);
+                writeNumericCell(excelRow, 4, toDouble(row.get("actual_area")), decimalStyle);
+                writeNumericCell(excelRow, 5, toDouble(row.get("planned_cash_amount_usd")), moneyStyle);
+                writeNumericCell(excelRow, 6, toDouble(row.get("actual_cash_amount_usd")), moneyStyle);
+                writeNumericCell(excelRow, 7, toDouble(row.get("planned_cash_amount_kgs")), kgsMoneyStyle);
+                writeNumericCell(excelRow, 8, toDouble(row.get("actual_cash_amount_kgs")), kgsMoneyStyle);
+            }
+
+            Row totalRow = sheet.createRow(rowIndex);
+            writeCell(totalRow, 0, "Итого", totalStyle);
+            writeNumericCell(totalRow, 1, toDouble(header.get("total_planned_units")), totalStyle);
+            writeNumericCell(totalRow, 2, toDouble(header.get("total_actual_units")), totalStyle);
+            writeNumericCell(totalRow, 3, toDouble(header.get("total_planned_area")), totalStyle);
+            writeNumericCell(totalRow, 4, toDouble(header.get("total_actual_area")), totalStyle);
+            writeNumericCell(totalRow, 5, toDouble(header.get("total_planned_cash_amount_usd")), totalMoneyStyle);
+            writeNumericCell(totalRow, 6, toDouble(header.get("total_actual_cash_amount_usd")), totalMoneyStyle);
+            writeNumericCell(totalRow, 7, toDouble(header.get("total_planned_cash_amount_kgs")), totalKgsMoneyStyle);
+            writeNumericCell(totalRow, 8, toDouble(header.get("total_actual_cash_amount_kgs")), totalKgsMoneyStyle);
+
+            autosizeColumns(sheet, 9);
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] generateSalesMonthlyPlanHtml(ReportData reportData) {
+        Map data = reportData.data();
+        Map header = reportData.header();
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.getOrDefault("rows", List.of());
+        StringBuilder html = new StringBuilder();
+        html.append("<!doctype html><html><head><meta charset='UTF-8'><style>")
+                .append("html,body{margin:0;padding:0;background:#f3f4f6;color:#172033}")
+                .append("body{font-family:Arial,sans-serif;padding:16px;box-sizing:border-box}")
+                .append(".sheet{background:#fff;padding:16px;min-width:980px;box-shadow:0 2px 10px rgba(0,0,0,.08)}")
+                .append("h2{margin:0 0 6px;text-align:center;font-size:20px;text-transform:uppercase}")
+                .append(".meta{font-weight:700;margin-bottom:16px;white-space:nowrap}")
+                .append("table{border-collapse:collapse;width:100%;font-size:12px;table-layout:auto}")
+                .append("th,td{border:1px solid #475569;padding:7px 8px;text-align:right;vertical-align:middle}")
+                .append("th{background:#d1d5db;text-align:center;font-weight:700;white-space:normal}")
+                .append("td:first-child{text-align:left;white-space:nowrap}")
+                .append(".money{white-space:nowrap}.total td{background:#fff59d;font-weight:700}")
+                .append("</style></head><body><div class='sheet'>")
+                .append("<h2>Помесячный график продаж</h2><div class='meta'>Объект: ")
+                .append(escapeHtml(stringValue(header.get("project_name"))));
+        if (!stringValue(header.get("block_name")).isBlank()) {
+            html.append(" | Блок: ").append(escapeHtml(stringValue(header.get("block_name"))));
+        }
+        html.append(" | Период: ").append(escapeHtml(stringValue(header.get("date_from"))))
+                .append(" - ").append(escapeHtml(stringValue(header.get("date_to"))))
+                .append(" | Валюты: USD / KGS</div>")
+                .append("<table><thead><tr>")
+                .append("<th rowspan='2'>Месяц</th>")
+                .append("<th colspan='2'>Лоты</th>")
+                .append("<th colspan='2'>м²</th>")
+                .append("<th colspan='2'>Поступления USD</th>")
+                .append("<th colspan='2'>Поступления KGS</th>")
+                .append("</tr><tr>")
+                .append("<th>Потребность</th><th>Факт</th>")
+                .append("<th>Потребность</th><th>Факт</th>")
+                .append("<th>Потребность</th><th>Факт</th>")
+                .append("<th>Потребность</th><th>Факт</th>")
+                .append("</tr></thead><tbody>");
+
+        for (Map<String, Object> row : rows) {
+            html.append("<tr><td class='left'>").append(escapeHtml(stringValue(row.get("month_name")))).append("</td>")
+                    .append("<td>").append(formatSmartNumber(toDouble(row.get("planned_units")))).append("</td>")
+                    .append("<td>").append(formatSmartNumber(toDouble(row.get("actual_units")))).append("</td>")
+                    .append("<td>").append(formatSmartNumber(toDouble(row.get("planned_area")))).append("</td>")
+                    .append("<td>").append(formatSmartNumber(toDouble(row.get("actual_area")))).append("</td>")
+                    .append("<td class='money'>$").append(formatMoneyForHtml(toDouble(row.get("planned_cash_amount_usd")))).append("</td>")
+                    .append("<td class='money'>$").append(formatMoneyForHtml(toDouble(row.get("actual_cash_amount_usd")))).append("</td>")
+                    .append("<td class='money'>").append(formatMoneyForHtml(toDouble(row.get("planned_cash_amount_kgs")))).append("</td>")
+                    .append("<td class='money'>").append(formatMoneyForHtml(toDouble(row.get("actual_cash_amount_kgs")))).append("</td></tr>");
+        }
+
+        html.append("<tr class='total'><td>Итого</td>")
+                .append("<td>").append(formatSmartNumber(toDouble(header.get("total_planned_units")))).append("</td>")
+                .append("<td>").append(formatSmartNumber(toDouble(header.get("total_actual_units")))).append("</td>")
+                .append("<td>").append(formatSmartNumber(toDouble(header.get("total_planned_area")))).append("</td>")
+                .append("<td>").append(formatSmartNumber(toDouble(header.get("total_actual_area")))).append("</td>")
+                .append("<td class='money'>$").append(formatMoneyForHtml(toDouble(header.get("total_planned_cash_amount_usd")))).append("</td>")
+                .append("<td class='money'>$").append(formatMoneyForHtml(toDouble(header.get("total_actual_cash_amount_usd")))).append("</td>")
+                .append("<td class='money'>").append(formatMoneyForHtml(toDouble(header.get("total_planned_cash_amount_kgs")))).append("</td>")
+                .append("<td class='money'>").append(formatMoneyForHtml(toDouble(header.get("total_actual_cash_amount_kgs")))).append("</td>")
+                .append("</tr></tbody></table></div></body></html>");
+        return html.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
     private void writeSalesUnitsSheet(
             Sheet sheet,
             CellStyle headerStyle,
@@ -4499,6 +4918,48 @@ public class ReportService {
         if (!dateFrom.isBlank() || !dateTo.isBlank()) parts.add("Период: " + firstNonBlank(dateFrom, "...") + " - " + firstNonBlank(dateTo, "..."));
         parts.add("Сформировано: " + formatIsoDate(header.get("generated_at")));
         return String.join(" | ", parts);
+    }
+
+    private String paymentsCashBookFilterLabel(Map header) {
+        String project = stringValue(header.get("project_name"));
+        String block = stringValue(header.get("block_name"));
+        String dateFrom = formatIsoDate(header.get("date_from"));
+        String dateTo = formatIsoDate(header.get("date_to"));
+        List<String> parts = new ArrayList<>();
+        if (!project.isBlank()) parts.add("Объект: " + project);
+        if (!block.isBlank()) parts.add("Блок: " + block);
+        if (!dateFrom.isBlank() || !dateTo.isBlank()) parts.add("Период: " + firstNonBlank(dateFrom, "...") + " - " + firstNonBlank(dateTo, "..."));
+        parts.add("Сформировано: " + formatIsoDate(header.get("generated_at")));
+        return String.join(" | ", parts);
+    }
+
+    private String paymentsCashBookDetails(Map<String, Object> row) {
+        String preparedDetails = stringValue(row.get("payment_details"));
+        if (!preparedDetails.isBlank()) {
+            return preparedDetails;
+        }
+
+        List<String> parts = new ArrayList<>();
+        addUniqueNonBlank(parts, row.get("article_name"));
+        addUniqueNonBlank(parts, row.get("title"));
+
+        String entityTypeName = stringValue(row.get("entity_type_name"));
+        String entityId = stringValue(row.get("entity_id"));
+        if (!entityTypeName.isBlank()) {
+            addUniqueNonBlank(parts, entityId.isBlank() ? entityTypeName : entityTypeName + " №" + entityId);
+        }
+
+        addUniqueNonBlank(parts, row.get("description"));
+        addUniqueNonBlank(parts, row.get("comment"));
+
+        return String.join(" — ", parts);
+    }
+
+    private void addUniqueNonBlank(List<String> parts, Object value) {
+        String text = stringValue(value).trim();
+        if (!text.isBlank() && !parts.contains(text)) {
+            parts.add(text);
+        }
     }
 
     private String salesFloorLabel(Map<String, Object> row) {
@@ -4584,6 +5045,15 @@ public class ReportService {
         return sanitizeFilename(orderShortName + " №" + orderNumber + " " + projectName + "." + format);
     }
 
+    public String buildPaymentsCashBookFilename(ReportData reportData) {
+        Map header = reportData.header();
+        String projectName = firstNonBlank(header.get("project_name"), "Объект");
+        String blockName = stringValue(header.get("block_name"));
+        String dateFrom = formatIsoDate(header.get("date_from"));
+        String dateTo = formatIsoDate(header.get("date_to"));
+        return sanitizeFilename("Кассовая книга " + projectName + " " + blockName + " " + dateFrom + " " + dateTo + ".xlsx");
+    }
+
     public String buildSalesSummaryFilename(ReportData reportData) {
         Map header = reportData.header();
         String projectName = firstNonBlank(header.get("project_name"), "Все объекты");
@@ -4601,6 +5071,14 @@ public class ReportService {
             return sanitizeFilename("График платежей договор №" + contract + " лот №" + unitNumber + ".xlsx");
         }
         return sanitizeFilename("График платежей продаж " + projectName + " " + blockName + ".xlsx");
+    }
+
+    public String buildSalesMonthlyPlanFilename(ReportData reportData, String format) {
+        Map header = reportData.header();
+        String projectName = firstNonBlank(header.get("project_name"), "Объект");
+        String blockName = stringValue(header.get("block_name"));
+        String period = stringValue(header.get("date_from")) + "-" + stringValue(header.get("date_to"));
+        return sanitizeFilename("График продаж " + projectName + " " + blockName + " " + period + "." + format);
     }
 
     public String buildEstimateStageFilename(ReportData reportData, String format) {

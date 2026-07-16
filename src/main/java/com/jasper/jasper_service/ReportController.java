@@ -311,6 +311,41 @@ public class ReportController {
         }
     }
 
+    @GetMapping("/payments-cash-book")
+    public ResponseEntity<byte[]> generatePaymentsCashBook(
+            @RequestParam Integer projectId,
+            @RequestParam(required = false) Integer blockId,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(defaultValue = "xlsx") String format,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        try {
+            String normalizedFormat = normalizeFormat(format);
+            if (!"html".equals(normalizedFormat) && !"xlsx".equals(normalizedFormat)) {
+                normalizedFormat = "xlsx";
+            }
+
+            ReportService.ReportData reportData = reportService.getPaymentsCashBookData(projectId, blockId, dateFrom, dateTo, authorizationHeader);
+            byte[] file = reportService.generatePaymentsCashBook(reportData, normalizedFormat);
+            String filename = reportService.buildPaymentsCashBookFilename(reportData);
+            String contentType = "html".equals(normalizedFormat)
+                    ? MediaType.TEXT_HTML_VALUE + "; charset=UTF-8"
+                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            String disposition = "html".equals(normalizedFormat) ? "inline" : "attachment";
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, contentType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
+                    .body(file);
+        } catch (Exception e) {
+            String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Payments cash book generation failed" : e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
+                    .body(message.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     @GetMapping("/sales-summary")
     public ResponseEntity<byte[]> generateSalesSummary(
             @RequestParam(required = false) Integer projectId,
@@ -357,6 +392,34 @@ public class ReportController {
                     .body(file);
         } catch (Exception e) {
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales payment schedule generation failed" : e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
+                    .body(message.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    @GetMapping("/sales-monthly-plan")
+    public ResponseEntity<byte[]> generateSalesMonthlyPlan(
+            @RequestParam Integer projectId,
+            @RequestParam(required = false) Integer blockId,
+            @RequestParam(defaultValue = "xlsx") String format,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        try {
+            String normalizedFormat = "html".equalsIgnoreCase(format) ? "html" : "xlsx";
+            ReportService.ReportData reportData = reportService.getSalesMonthlyPlanData(projectId, blockId, authorizationHeader);
+            byte[] file = reportService.generateSalesMonthlyPlan(reportData, normalizedFormat);
+            String filename = reportService.buildSalesMonthlyPlanFilename(reportData, normalizedFormat);
+            String contentType = "html".equals(normalizedFormat)
+                    ? MediaType.TEXT_HTML_VALUE + "; charset=UTF-8"
+                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, contentType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("html".equals(normalizedFormat) ? "inline" : "attachment", filename))
+                    .body(file);
+        } catch (Exception e) {
+            String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales monthly plan generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
                     .body(message.getBytes(StandardCharsets.UTF_8));
