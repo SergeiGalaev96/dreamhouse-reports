@@ -180,6 +180,35 @@ public class ReportService {
         return new ReportData(data, header);
     }
 
+    public ReportData getMaterialRequestData(String id, String authorizationHeader) {
+        String url = apiBaseUrl + "/api/reports/materialRequest/" + id;
+
+        HttpHeaders headers = new HttpHeaders();
+        if (authorizationHeader != null && !authorizationHeader.isBlank()) {
+            headers.set(HttpHeaders.AUTHORIZATION, authorizationHeader);
+        }
+
+        ResponseEntity<Map> apiResponse = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class
+        );
+
+        Map response = apiResponse.getBody();
+        if (response == null || !Boolean.TRUE.equals(response.get("success"))) {
+            throw new IllegalStateException("Material request report API returned an unsuccessful response");
+        }
+
+        Map data = (Map) response.get("data");
+        Map header = data == null ? null : (Map) data.get("header");
+        if (header == null) {
+            throw new IllegalStateException("Material request report API response does not contain header");
+        }
+
+        return new ReportData(data, header);
+    }
+
     public ReportData getForm19Data(Integer projectId, String dateFrom, String dateTo, String authorizationHeader) {
         String url = apiBaseUrl + "/api/reports/form19";
 
@@ -648,6 +677,135 @@ public class ReportService {
             case "html" -> exportHtml(print);
             default -> JasperExportManager.exportReportToPdf(print);
         };
+    }
+
+    public byte[] generateMaterialRequest(ReportData reportData) throws Exception {
+        Map header = reportData.header();
+        List<Map<String, Object>> items = (List<Map<String, Object>>) reportData.data().getOrDefault("items", List.of());
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Заявка на материалы");
+            sheet.setFitToPage(true);
+            sheet.setHorizontallyCenter(true);
+            sheet.getPrintSetup().setLandscape(false);
+            sheet.setAutobreaks(true);
+            sheet.setColumnWidth(0, 7 * 256);
+            sheet.setColumnWidth(1, 38 * 256);
+            sheet.setColumnWidth(2, 10 * 256);
+            sheet.setColumnWidth(3, 11 * 256);
+            sheet.setColumnWidth(4, 12 * 256);
+            sheet.setColumnWidth(5, 14 * 256);
+            sheet.setColumnWidth(6, 31 * 256);
+
+            Font boldFont = workbook.createFont();
+            boldFont.setBold(true);
+            Font normalFont = workbook.createFont();
+            normalFont.setFontName("Times New Roman");
+
+            CellStyle textStyle = workbook.createCellStyle();
+            textStyle.setFont(normalFont);
+            textStyle.setWrapText(true);
+            textStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle centeredStyle = workbook.createCellStyle();
+            centeredStyle.cloneStyleFrom(textStyle);
+            centeredStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            CellStyle headerStyle = workbook.createCellStyle();
+            headerStyle.cloneStyleFrom(centeredStyle);
+            headerStyle.setFont(boldFont);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+
+            CellStyle tableTextStyle = workbook.createCellStyle();
+            tableTextStyle.cloneStyleFrom(textStyle);
+            tableTextStyle.setBorderTop(BorderStyle.THIN);
+            tableTextStyle.setBorderBottom(BorderStyle.THIN);
+            tableTextStyle.setBorderLeft(BorderStyle.THIN);
+            tableTextStyle.setBorderRight(BorderStyle.THIN);
+
+            CellStyle tableCenterStyle = workbook.createCellStyle();
+            tableCenterStyle.cloneStyleFrom(headerStyle);
+            tableCenterStyle.setFont(normalFont);
+
+            int rowIndex = 0;
+            Row approvalRow = sheet.createRow(rowIndex++);
+            approvalRow.createCell(4).setCellValue("Утверждаю в сумме ____________");
+            Row directorRow = sheet.createRow(rowIndex++);
+            directorRow.createCell(4).setCellValue("Генеральный директор __________________");
+
+            Row requestRow = sheet.createRow(rowIndex++);
+            Cell requestTitle = requestRow.createCell(0);
+            requestTitle.setCellValue("Заявка №" + stringValue(header.get("id")));
+            requestTitle.setCellStyle(centeredStyle);
+            requestTitle.getCellStyle().setFont(boldFont);
+            sheet.addMergedRegion(new CellRangeAddress(rowIndex - 1, rowIndex - 1, 0, 6));
+
+            Row objectRow = sheet.createRow(rowIndex++);
+            objectRow.createCell(0).setCellValue("По объекту: " + stringValue(header.get("project_name")) + ", " + stringValue(header.get("block_name")));
+            sheet.addMergedRegion(new CellRangeAddress(rowIndex - 1, rowIndex - 1, 0, 6));
+            Row dateRow = sheet.createRow(rowIndex++);
+            dateRow.createCell(0).setCellValue(formatCreatedAt(header.get("created_at")));
+            sheet.addMergedRegion(new CellRangeAddress(rowIndex - 1, rowIndex - 1, 0, 6));
+
+            String[] columns = {"№\nп/п", "Наименования", "Ед.\nизм.", "Кол-во", "Цена", "Сумма", "Примечание"};
+            Row columnRow = sheet.createRow(rowIndex++);
+            columnRow.setHeightInPoints(32);
+            for (int column = 0; column < columns.length; column++) {
+                Cell cell = columnRow.createCell(column);
+                cell.setCellValue(columns[column]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int number = 1;
+            for (Map<String, Object> item : items) {
+                Row row = sheet.createRow(rowIndex++);
+                row.setHeightInPoints(30);
+                String stageNote = String.join(" — ", List.of(
+                        stringValue(item.get("stage_name")),
+                        stringValue(item.get("subsection_name"))
+                ).stream().filter(value -> !value.isBlank()).toList());
+                String note = firstNonBlank(item.get("comment"), stageNote);
+                Object[] values = {
+                        number++,
+                        stringValue(item.get("material_name")),
+                        stringValue(item.get("unit_name")),
+                        toDouble(item.get("quantity")),
+                        toDouble(item.get("price")),
+                        toDouble(item.get("total")),
+                        note
+                };
+                for (int column = 0; column < values.length; column++) {
+                    Cell cell = row.createCell(column);
+                    if (values[column] instanceof Number value) cell.setCellValue(value.doubleValue());
+                    else cell.setCellValue(stringValue(values[column]));
+                    cell.setCellStyle(column == 1 || column == 6 ? tableTextStyle : tableCenterStyle);
+                }
+            }
+
+            rowIndex += 2;
+            String[][] signatures = {
+                    {"Прораб:", stringValue(header.get("foreman_name"))},
+                    {"Нач. участка:", stringValue(header.get("site_manager_name"))},
+                    {"Снабженец:", stringValue(header.get("purchasing_agent_name"))},
+                    {"Инженер ПТО:", stringValue(header.get("planning_engineer_name"))},
+                    {"Гл. инженер:", stringValue(header.get("main_engineer_name"))}
+            };
+            for (String[] signature : signatures) {
+                Row row = sheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(signature[0] + " ____________________");
+                row.createCell(3).setCellValue(signature[1]);
+                sheet.addMergedRegion(new CellRangeAddress(row.getRowNum(), row.getRowNum(), 0, 2));
+                sheet.addMergedRegion(new CellRangeAddress(row.getRowNum(), row.getRowNum(), 3, 6));
+            }
+
+            sheet.getPrintSetup().setFitWidth((short) 1);
+            sheet.getPrintSetup().setFitHeight((short) 0);
+            workbook.write(output);
+            return output.toByteArray();
+        }
     }
 
     public byte[] generatePaymentCashOrder(ReportData reportData, String format) throws Exception {
@@ -4991,6 +5149,11 @@ public class ReportService {
 
     public String buildWorkPerformedFilename(String id, String format, String authorizationHeader) {
         return buildWorkPerformedFilename(getWorkPerformedData(id, authorizationHeader), id, format);
+    }
+
+    public String buildMaterialRequestFilename(ReportData reportData, String id) {
+        String requestId = firstNonBlank(reportData.header().get("id"), id);
+        return "Заявка на материалы №" + requestId + ".xlsx";
     }
 
     public String buildWorkPerformedFilename(ReportData reportData, String id, String format) {

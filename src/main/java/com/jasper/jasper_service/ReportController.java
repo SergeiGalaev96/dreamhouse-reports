@@ -61,6 +61,21 @@ public class ReportController {
                 .body(file);
     }
 
+    @GetMapping("/materialRequest/{id}")
+    public ResponseEntity<byte[]> generateMaterialRequest(
+            @PathVariable String id,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) throws Exception {
+        ReportService.ReportData reportData = reportService.getMaterialRequestData(id, authorizationHeader);
+        byte[] file = reportService.generateMaterialRequest(reportData);
+        String filename = reportService.buildMaterialRequestFilename(reportData, id);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("attachment", filename))
+                .body(file);
+    }
+
     @GetMapping("/form29")
     public ResponseEntity<byte[]> generateForm29(
             @RequestParam Integer blockId,
