@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -106,6 +107,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Form29 generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -143,6 +145,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Form2 generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -180,6 +183,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Form19 generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -217,6 +221,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "MBP write-off generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -251,6 +256,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Projects overview generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -284,6 +290,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Estimate stage generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -319,6 +326,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Payment cash order generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -354,6 +362,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Payments cash book generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -380,6 +389,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("attachment", filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales summary generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -406,6 +416,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("attachment", filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales payment schedule generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -434,6 +445,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition("html".equals(normalizedFormat) ? "inline" : "attachment", filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Sales monthly plan generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -469,6 +481,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Schedule generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
@@ -504,6 +517,7 @@ public class ReportController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(disposition, filename))
                     .body(file);
         } catch (Exception e) {
+            if (e instanceof RestClientResponseException) throw e;
             String message = e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "Material schedule generation failed" : e.getMessage());
             return ResponseEntity.internalServerError()
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + "; charset=UTF-8")
