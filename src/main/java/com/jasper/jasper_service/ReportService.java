@@ -633,7 +633,7 @@ public class ReportService {
         params.put("advancePayment", advancePayment);
         params.put("remainingAmount", remainingAmount);
         params.put("totalInWords", amountToWords(total));
-        params.put("reportId", firstNonBlank(header.get("id"), id));
+        params.put("reportId", firstNonBlank(header.get("number"), firstNonBlank(header.get("id"), id)));
         params.put("createdAt", formatCreatedAt(header.get("created_at")));
         params.put("projectName", stringValue(header.get("project_name")));
         params.put("blockName", stringValue(header.get("block_name")));
@@ -738,7 +738,7 @@ public class ReportService {
 
             Row requestRow = sheet.createRow(rowIndex++);
             Cell requestTitle = requestRow.createCell(0);
-            requestTitle.setCellValue("Заявка №" + stringValue(header.get("id")));
+            requestTitle.setCellValue("Заявка №" + firstNonBlank(header.get("number"), header.get("id")));
             requestTitle.setCellStyle(centeredStyle);
             requestTitle.getCellStyle().setFont(boldFont);
             sheet.addMergedRegion(new CellRangeAddress(rowIndex - 1, rowIndex - 1, 0, 6));
@@ -4054,8 +4054,39 @@ public class ReportService {
 
             writeEstimateSummarySheet(workbook, summary, header, metaStyle, titleStyle, headerStyle, textStyle, centerStyle, moneyStyle, totalStyle);
 
+            formatEstimateNumbers(workbook);
+
             workbook.write(out);
             return out.toByteArray();
+        }
+    }
+
+    private void formatEstimateNumbers(XSSFWorkbook workbook) {
+        Map<String, CellStyle> styles = new HashMap<>();
+        for (Sheet sheet : workbook) {
+            for (Row row : sheet) {
+                for (Cell cell : row) {
+                    if (cell.getCellType() != org.apache.poi.ss.usermodel.CellType.NUMERIC) continue;
+                    double value = cell.getNumericCellValue();
+                    if (value == 0) {
+                        cell.setBlank();
+                        continue;
+                    }
+                    // Keep numeric values editable; use only the decimal places actually displayed.
+                    int scale = Math.max(0, BigDecimal.valueOf(value)
+                            .setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().scale());
+                    String format = scale == 0 ? "0" : "0." + "0".repeat(scale);
+                    CellStyle original = cell.getCellStyle();
+                    String key = original.getIndex() + ":" + format;
+                    CellStyle style = styles.computeIfAbsent(key, ignored -> {
+                        CellStyle result = workbook.createCellStyle();
+                        result.cloneStyleFrom(original);
+                        result.setDataFormat(workbook.createDataFormat().getFormat(format));
+                        return result;
+                    });
+                    cell.setCellStyle(style);
+                }
+            }
         }
     }
 
@@ -5152,13 +5183,13 @@ public class ReportService {
     }
 
     public String buildMaterialRequestFilename(ReportData reportData, String id) {
-        String requestId = firstNonBlank(reportData.header().get("id"), id);
+        String requestId = firstNonBlank(reportData.header().get("number"), firstNonBlank(reportData.header().get("id"), id));
         return "Заявка на материалы №" + requestId + ".xlsx";
     }
 
     public String buildWorkPerformedFilename(ReportData reportData, String id, String format) {
         Map header = reportData.header();
-        String reportId = firstNonBlank(header.get("id"), id);
+        String reportId = firstNonBlank(header.get("number"), firstNonBlank(header.get("id"), id));
         String projectName = stringValue(header.get("project_name"));
         String blockName = stringValue(header.get("block_name"));
         return sanitizeFilename("Акт вып. работ №" + reportId + " " + projectName + " " + blockName + "." + format);
